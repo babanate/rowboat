@@ -28,6 +28,8 @@ final class Settings: ObservableObject {
     static let defaultScrollShortcut = KeyShortcut(keyCode: 38, modifiers: [.shift, .command]) // ⇧⌘J
     static let defaultSearchShortcut = KeyShortcut(keyCode: 44, modifiers: .shift)           // ⇧/
     static let defaultLabelCharacters = "asdfjklghqwertyuiopzxcvbnm"
+    /// WebKit browsers expose their page only after AXEnhancedUserInterface is set.
+    static let webKitBundlePrefixes = ["com.apple.Safari", "com.apple.SafariTechnologyPreview", "org.webkit"]
     static let chromiumBundlePrefixes = [
         "com.google.Chrome", "org.chromium", "com.brave.Browser", "com.microsoft.edgemac",
         "com.vivaldi.Vivaldi", "company.thebrowser.Browser", "com.operasoftware.Opera",
@@ -103,6 +105,11 @@ final class Settings: ObservableObject {
     func isExcluded(bundleIdentifier: String?) -> Bool {
         guard let id = bundleIdentifier else { return false }
         return excludedBundleIdentifiers.contains(id)
+    }
+
+    func isWebKitBrowser(bundleIdentifier: String?) -> Bool {
+        guard let id = bundleIdentifier else { return false }
+        return Self.webKitBundlePrefixes.contains { id.hasPrefix($0) }
     }
 
     func isChromium(bundleIdentifier: String?) -> Bool {

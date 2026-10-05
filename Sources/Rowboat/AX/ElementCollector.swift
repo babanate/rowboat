@@ -29,6 +29,9 @@ final class ElementCollector {
         var visibleFrame = CGRect.zero
         var emptyFrames = 0
         var predicateResults = 0
+        var wantsEnhancedInterface = false
+        var enabledEnhancedInterface = false
+        var retried = false
         var roleCounts: [String: Int] = [:]
         var error: String?
     }
@@ -73,14 +76,39 @@ final class ElementCollector {
     }
 
     static func collectSync(app: NSRunningApplication, options: Options) -> ([HintTarget], Report) {
+        var (targets, report) = walkOnce(app: app, options: options)
+        // Chromium, Electron and WebKit build their trees asynchronously after the
+        // first request (Electron even reports the enhanced interface as already
+        // on); a near-empty result from such an app means it was not ready yet.
+        if report.wantsEnhancedInterface, targets.count < 5 {
+            usleep(600_000)
+            (targets, report) = walkOnce(app: app, options: options)
+            report.retried = true
+        }
+        return (targets, report)
+    }
+
+    private static func walkOnce(app: NSRunningApplication, options: Options) -> ([HintTarget], Report) {
         let start = Date()
         var report = Report()
         AXUIElementSetMessagingTimeout(AXElement.systemWide.raw, options.messagingTimeout)
         let appElement = AXElement.application(pid: app.processIdentifier)
 
-        if options.enableChromiumAccessibility, Settings.shared.isChromium(bundleIdentifier: app.bundleIdentifier) || ElectronDetector.isElectron(app) {
+        // Safari shows its web area, and Chromium/Electron their whole page, only
+        // once an assistive client asks for the enhanced interface. Safari reports
+        // "not implemented" for the set and honours it anyway.
+        let settings = Settings.shared
+        let wantsEnhanced = settings.isWebKitBrowser(bundleIdentifier: app.bundleIdentifier)
+            || (options.enableChromiumAccessibility && (settings.isChromium(bundleIdentifier: app.bundleIdentifier) || ElectronDetector.isElectron(app)))
+        report.wantsEnhancedInterface = wantsEnhanced
+        if wantsEnhanced {
+            let already = (appElement.value("AXEnhancedUserInterface") as? Bool) ?? false
             appElement.set("AXEnhancedUserInterface", true)
             appElement.set("AXManualAccessibility", true)
+            if !already {
+                report.enabledEnhancedInterface = true
+                usleep(250_000)  // first time: give the app a moment to build its tree
+            }
         }
 
         guard let window = appElement.element(kAXFocusedWindowAttribute) ?? appElement.elements(kAXWindowsAttribute).first else {
