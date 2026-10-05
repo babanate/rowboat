@@ -22,6 +22,8 @@ final class Settings: ObservableObject {
         case warpCursorInScrollMode
         case restoreCursorAfterClick
         case labelTextAndImages
+        case screenTextFallback
+        case screenTextApps
     }
 
     // Defaults mirror Homerow's so switching is painless.
@@ -91,6 +93,17 @@ final class Settings: ObservableObject {
     var labelTextAndImages: Bool {
         get { bool(.labelTextAndImages, default: true) }
         set { set(newValue, .labelTextAndImages) }
+    }
+
+    /// Read text off the screen when an app's accessibility tree is empty.
+    var screenTextFallback: Bool {
+        get { bool(.screenTextFallback, default: true) }
+        set { set(newValue, .screenTextFallback) }
+    }
+    /// Apps that always get screen text, whatever their tree says.
+    var screenTextApps: [String] {
+        get { defaults.stringArray(forKey: Key.screenTextApps.rawValue) ?? ["dev.warp.Warp-Stable", "dev.warp.Warp"] }
+        set { set(newValue, .screenTextApps) }
     }
 
     var restoreCursorAfterClick: Bool {

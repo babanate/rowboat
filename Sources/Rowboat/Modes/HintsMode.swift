@@ -28,9 +28,14 @@ final class HintsMode: Mode {
         var options = ElementCollector.Options()
         options.enableChromiumAccessibility = host.settings.enableChromiumAccessibility
         options.labelTextAndImages = host.settings.labelTextAndImages
+        options.screenTextFallback = host.settings.screenTextFallback
+        options.screenTextApps = host.settings.screenTextApps
         if searchable { render() }
         ElementCollector(options: options).collect(app: host.app) { [weak self] targets, report in
             guard let self, !self.ended else { return }
+            if report.screenTextError == "no screen recording permission" {
+                Self.askForScreenRecordingOnce()
+            }
             if targets.isEmpty {
                 self.host.overlay.flash(report.error == nil ? "No targets" : "No window")
                 self.host.finish()
@@ -50,6 +55,16 @@ final class HintsMode: Mode {
             self.pending = []
             replay.forEach(self.handle)
         }
+    }
+
+    private static var askedForScreenRecording = false
+    /// The first time screen text is needed without permission, open the
+    /// system prompt once; later activations stay quiet.
+    static func askForScreenRecordingOnce() {
+        guard !askedForScreenRecording else { return }
+        askedForScreenRecording = true
+        Log.ax.warning("screen recording permission missing; asking")
+        _ = ScreenCapture.hasPermission(prompt: true)
     }
 
     static func anchors(for targets: [HintTarget], labels: [String], visible: CGRect) -> [CGPoint] {

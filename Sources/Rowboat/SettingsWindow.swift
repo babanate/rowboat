@@ -7,10 +7,11 @@ final class SettingsWindowController: NSObject, NSTextViewDelegate, NSTextFieldD
     private let settings = Settings.shared
     private var controls: [() -> Void] = []   // refreshers
     private var excludedView: NSTextView!
+    private var screenTextView: NSTextView!
     private var labelField: NSTextField!
 
     override init() {
-        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 620), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
+        window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 560, height: 760), styleMask: [.titled, .closable, .miniaturizable], backing: .buffered, defer: false)
         window.title = "Rowboat Settings"
         window.isReleasedWhenClosed = false
         super.init()
@@ -79,6 +80,24 @@ final class SettingsWindowController: NSObject, NSTextViewDelegate, NSTextFieldD
         scroll.heightAnchor.constraint(equalToConstant: 64).isActive = true
         scroll.widthAnchor.constraint(equalToConstant: 500).isActive = true
         stack.addArrangedSubview(labelled("Excluded bundle identifiers, one per line", scroll, vertical: true))
+
+        stack.addArrangedSubview(header("Screen text"))
+        stack.addArrangedSubview(toggle("Read text off the screen when an app exposes almost nothing", get: { self.settings.screenTextFallback }, set: { self.settings.screenTextFallback = $0 }))
+        stack.addArrangedSubview(caption("Needs the Screen Recording permission. Warp, canvases and other custom-drawn apps get labels on their text this way; the first press in such an app takes about a quarter second, later presses reuse the result until the screen changes."))
+        let appsScroll = NSScrollView()
+        screenTextView = NSTextView()
+        screenTextView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
+        screenTextView.delegate = self
+        screenTextView.isRichText = false
+        screenTextView.autoresizingMask = [.width]
+        screenTextView.string = settings.screenTextApps.joined(separator: "\n")
+        appsScroll.documentView = screenTextView
+        appsScroll.hasVerticalScroller = true
+        appsScroll.borderType = .bezelBorder
+        appsScroll.translatesAutoresizingMaskIntoConstraints = false
+        appsScroll.heightAnchor.constraint(equalToConstant: 48).isActive = true
+        appsScroll.widthAnchor.constraint(equalToConstant: 500).isActive = true
+        stack.addArrangedSubview(labelled("Always use screen text in these apps (bundle identifiers)", appsScroll, vertical: true))
 
         stack.addArrangedSubview(header("General"))
         stack.addArrangedSubview(toggle("Show menu bar icon", get: { self.settings.showMenuBarIcon }, set: { self.settings.showMenuBarIcon = $0 }))
@@ -196,10 +215,14 @@ final class SettingsWindowController: NSObject, NSTextViewDelegate, NSTextFieldD
     }
 
     func textDidChange(_ notification: Notification) {
-        settings.excludedBundleIdentifiers = excludedView.string
-            .split(whereSeparator: \.isNewline)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        let lines = { (view: NSTextView) in
+            view.string.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        }
+        if (notification.object as? NSTextView) == screenTextView {
+            settings.screenTextApps = lines(screenTextView)
+        } else {
+            settings.excludedBundleIdentifiers = lines(excludedView)
+        }
     }
 }
 

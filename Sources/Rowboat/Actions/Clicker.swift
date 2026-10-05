@@ -9,8 +9,8 @@ enum ClickKind {
 /// elements covered by other views; falls back to synthetic mouse events.
 enum Clicker {
     static func click(_ target: HintTarget, kind: ClickKind) {
-        if kind == .left, target.supportsPress {
-            let err = target.element.perform(kAXPressAction)
+        if kind == .left, target.supportsPress, let element = target.element {
+            let err = element.perform(kAXPressAction)
             if err == .success {
                 Log.mode.info("AXPress on \(target.role) '\(target.displayName)'")
                 return

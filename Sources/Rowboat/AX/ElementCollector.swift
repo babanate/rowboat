@@ -19,6 +19,11 @@ final class ElementCollector {
         var useSearchPredicate = true
         /// Static text and images in native views become targets (Homerow does this).
         var labelTextAndImages = true
+        /// OCR the window when the tree yields fewer than `screenTextThreshold`
+        /// targets inside it, or when the app is listed in `screenTextApps`.
+        var screenTextFallback = true
+        var screenTextThreshold = 6
+        var screenTextApps: [String] = []
     }
 
     struct Report {
@@ -34,6 +39,9 @@ final class ElementCollector {
         var wantsEnhancedInterface = false
         var enabledEnhancedInterface = false
         var retried = false
+        var screenText = 0
+        var screenTextElapsed: TimeInterval = 0
+        var screenTextError: String?
         var roleCounts: [String: Int] = [:]
         var error: String?
     }
@@ -247,6 +255,19 @@ final class ElementCollector {
         // exposing its own AXExtrasMenuBar. Asking every app takes over a second
         // on a busy Mac, so activation reads a cache that is refreshed afterwards.
         found.append(contentsOf: cachedStatusItems.filter { $0.frame.intersects(screenBounds) })
+
+        // Screen text where the tree is bare (custom-drawn apps such as Warp).
+        let inWindow = found.filter { visible.contains($0.center) }.count
+        let wantsScreenText = options.screenTextApps.contains(app.bundleIdentifier ?? "") || (options.screenTextFallback && inWindow < options.screenTextThreshold)
+        if wantsScreenText {
+            let result = ScreenTextScanner.shared.scan(visible)
+            report.screenText = result.targets.count
+            report.screenTextElapsed = result.elapsed
+            report.screenTextError = result.error
+            // Keep screen text that does not overlap an accessibility target.
+            let axFrames = found.map(\.frame)
+            found.append(contentsOf: result.targets.filter { t in !axFrames.contains { HintLayout.iou($0, t.frame) > 0.3 } })
+        }
 
         let deduped = HintLayout.dedupe(found.map(\.frame)).map { found[$0] }
         // A row, card or panel that encloses two or more labelled things gets

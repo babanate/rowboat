@@ -13,12 +13,17 @@ enum CLI {
             var options = ElementCollector.Options()
             options.enableChromiumAccessibility = Settings.shared.enableChromiumAccessibility
             options.labelTextAndImages = Settings.shared.labelTextAndImages
+            options.screenTextFallback = Settings.shared.screenTextFallback
+            options.screenTextApps = Settings.shared.screenTextApps
             let t0 = Date()
             ElementCollector.refreshStatusItemsNow()
             print("status items refreshed in \(Int(Date().timeIntervalSince(t0) * 1000)) ms")
             let (targets, report) = ElementCollector.collectSync(app: app, options: options)
             print("app: \(app.bundleIdentifier ?? "?") pid \(app.processIdentifier) window: \(report.windowTitle)")
             print("visited \(report.visited) nodes, pruned \(report.pruned), empty frames \(report.emptyFrames), predicate \(report.predicateResults), \(targets.count) targets, \(Int(report.elapsed * 1000)) ms\(report.truncated ? " (truncated)" : "")\(report.error.map { " error: \($0)" } ?? "")")
+            if report.screenText > 0 || report.screenTextError != nil {
+                print("screen text: \(report.screenText) phrases in \(Int(report.screenTextElapsed * 1000)) ms\(report.screenTextError.map { " (\($0))" } ?? "")")
+            }
             if RLog.echo {
                 let top = report.roleCounts.sorted { $0.value > $1.value }.prefix(12).map { "\($0.key)=\($0.value)" }
                 print("roles: " + top.joined(separator: " "))

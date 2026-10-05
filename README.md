@@ -104,6 +104,18 @@ developer CLI and checking screenshots and the target app's state:
 
 Each release is checked against that list before it is tagged.
 
+## Screen text for apps that expose nothing
+
+Some apps draw their own interface and give the accessibility API nothing to
+label: Warp is one, canvases and games are others. For those, Rowboat reads
+the window off the screen: a 13 ms capture, then Vision's fast OCR at half
+resolution, grouped into phrases, with URLs and paths getting labels of their
+own. It runs when an app yields fewer than six targets inside its window or
+when the app is listed under Screen text in Settings (Warp is listed by
+default). First press in such an app: about a quarter second; later presses
+reuse the result until the screen changes. It needs the Screen Recording
+permission, which Rowboat asks for the first time it is needed.
+
 ## Side effects worth knowing
 
 - Rowboat asks Chromium, Electron and WebKit apps for their enhanced

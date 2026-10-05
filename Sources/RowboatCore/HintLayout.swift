@@ -37,7 +37,7 @@ public enum HintLayout {
         return kept
     }
 
-    static func iou(_ a: CGRect, _ b: CGRect) -> CGFloat {
+    public static func iou(_ a: CGRect, _ b: CGRect) -> CGFloat {
         let inter = a.intersection(b)
         guard !inter.isNull, !inter.isEmpty else { return 0 }
         let interArea = inter.width * inter.height

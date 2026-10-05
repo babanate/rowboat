@@ -3,7 +3,8 @@ import CoreGraphics
 /// A clickable element found by the collector. `frame` uses the Accessibility
 /// API's top-left screen origin.
 struct HintTarget {
-    let element: AXElement
+    /// nil for targets found on screen rather than in the accessibility tree.
+    let element: AXElement?
     let frame: CGRect
     let role: String
     let title: String
