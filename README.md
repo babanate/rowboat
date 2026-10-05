@@ -92,6 +92,18 @@ developer CLI and checking screenshots and the target app's state:
 
 Each release is checked against that list before it is tagged.
 
+## Side effects worth knowing
+
+- Rowboat asks Chromium, Electron and WebKit apps for their enhanced
+  accessibility interface so their pages are labelled. VS Code reacts with a
+  "Screen reader usage detected" notice the first time; answer No. Homerow
+  does the same and warns that it can cost such apps some performance. Turn
+  it off under Apps in Settings if you prefer.
+- Scroll mode moves the cursor into the selected area so scroll events land
+  there; a hover popover can appear under it. Turn off "Move the cursor to
+  the scroll area" to avoid that in apps that route scroll events by event
+  location.
+
 ## Not yet
 
 Hyper key (Caps Lock remap), input-source switching, menu bar extras, update
