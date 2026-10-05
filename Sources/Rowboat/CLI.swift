@@ -14,7 +14,11 @@ enum CLI {
             options.enableChromiumAccessibility = Settings.shared.enableChromiumAccessibility
             let (targets, report) = ElementCollector.collectSync(app: app, options: options)
             print("app: \(app.bundleIdentifier ?? "?") pid \(app.processIdentifier) window: \(report.windowTitle)")
-            print("visited \(report.visited) nodes, pruned \(report.pruned), \(targets.count) targets, \(Int(report.elapsed * 1000)) ms\(report.truncated ? " (truncated)" : "")\(report.error.map { " error: \($0)" } ?? "")")
+            print("visited \(report.visited) nodes, pruned \(report.pruned), empty frames \(report.emptyFrames), predicate \(report.predicateResults), \(targets.count) targets, \(Int(report.elapsed * 1000)) ms\(report.truncated ? " (truncated)" : "")\(report.error.map { " error: \($0)" } ?? "")")
+            if RLog.echo {
+                let top = report.roleCounts.sorted { $0.value > $1.value }.prefix(12).map { "\($0.key)=\($0.value)" }
+                print("roles: " + top.joined(separator: " "))
+            }
             for t in targets {
                 let f = t.frame
                 print(String(format: "%5d %5d %5dx%-5d %-16@ %@%@", Int(f.minX), Int(f.minY), Int(f.width), Int(f.height),
@@ -37,20 +41,20 @@ enum CLI {
             DistributedNotificationCenter.default().postNotificationName(settingsNotification, object: nil, userInfo: nil, deliverImmediately: true)
             return 0
         case "--type":
-            // Posts key events for each character, for driving modes in tests.
+            // Posts key events for each character using the current layout's
+            // key codes; uppercase letters are sent with Shift. "escape",
+            // "return", "tab", "space", "delete" are sent as those keys.
             guard let text = args.dropFirst().first else { print("usage: --type <characters>"); return 2 }
-            for ch in (text == "escape" ? "\u{1B}" : text) {
-                let code: UInt16 = ch == "\u{1B}" ? 53 : (ch == "\n" ? 36 : 0)
-                for down in [true, false] {
-                    guard let e = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: down) else { continue }
-                    if code == 0 {
-                        var units = Array(String(ch).utf16)
-                        e.keyboardSetUnicodeString(stringLength: units.count, unicodeString: &units)
-                    }
-                    e.post(tap: .cghidEventTap)
-                    usleep(30_000)
-                }
+            for stroke in KeyPoster.strokes(for: text) { KeyPoster.tap(stroke) }
+            return 0
+        case "--hold":
+            // --hold j 600  holds the key for 600 ms (scroll mode testing).
+            guard args.count >= 3, let stroke = KeyPoster.strokes(for: args[1]).first, let ms = Int(args[2]) else {
+                print("usage: --hold <key> <milliseconds>"); return 2
             }
+            KeyPoster.post(stroke, down: true)
+            usleep(UInt32(ms) * 1000)
+            KeyPoster.post(stroke, down: false)
             return 0
         case "--trusted":
             print(Permissions.accessibilityTrusted(prompt: false))
@@ -62,7 +66,8 @@ enum CLI {
               --scroll-areas [bundle-id]  list scroll areas
               --activate hints|scroll|search   trigger a mode in the running app
               --settings                  open settings in the running app
-              --type <chars>              post key events (--type escape sends Escape)
+              --type <chars>              post key events; uppercase adds Shift; "escape", "return", "tab", "space", "delete"
+              --hold <key> <ms>           hold a key down for a while (scroll mode)
               --trusted                   print whether this process has Accessibility access
             """)
             return args.first == "--help" ? 0 : 2
@@ -77,5 +82,41 @@ enum CLI {
             return app
         }
         return NSWorkspace.shared.frontmostApplication
+    }
+}
+
+/// Posts keyboard events with real virtual key codes from the current layout.
+enum KeyPoster {
+    struct Stroke { var keyCode: UInt16; var flags: CGEventFlags; var text: String }
+
+    static let named: [String: UInt16] = ["escape": 53, "return": 36, "tab": 48, "space": 49, "delete": 51,
+                                           "up": 126, "down": 125, "left": 123, "right": 124]
+
+    static var layout: [Character: UInt16] = {
+        var map: [Character: UInt16] = [:]
+        for code in UInt16(0)...UInt16(60) {
+            if let s = KeyNames.character(for: code), let c = s.first, map[c] == nil { map[c] = code }
+        }
+        return map
+    }()
+
+    static func strokes(for text: String) -> [Stroke] {
+        if let code = named[text.lowercased()] { return [Stroke(keyCode: code, flags: [], text: "")] }
+        return text.compactMap { ch in
+            let lower = Character(ch.lowercased())
+            guard let code = layout[lower] else { print("no key for \(ch)"); return nil }
+            return Stroke(keyCode: code, flags: ch.isUppercase ? .maskShift : [], text: String(ch))
+        }
+    }
+
+    static func post(_ stroke: Stroke, down: Bool) {
+        guard let e = CGEvent(keyboardEventSource: nil, virtualKey: stroke.keyCode, keyDown: down) else { return }
+        e.flags = stroke.flags
+        e.post(tap: .cghidEventTap)
+    }
+
+    static func tap(_ stroke: Stroke) {
+        post(stroke, down: true); usleep(25_000)
+        post(stroke, down: false); usleep(45_000)
     }
 }

@@ -4,7 +4,7 @@ import ApplicationServices
 /// Finds scrollable regions in the frontmost window, largest first.
 enum ScrollAreaCollector {
     static let scrollRoles: Set<String> = ["AXScrollArea", "AXWebArea", "AXTable", "AXOutline", "AXList", "AXTextArea"]
-    static let attributes = [kAXRoleAttribute, kAXChildrenAttribute, kAXPositionAttribute, kAXSizeAttribute]
+    static let attributes = [kAXRoleAttribute, kAXChildrenAttribute, kAXPositionAttribute, kAXSizeAttribute, "AXContents"]
 
     static func collect(app: NSRunningApplication, completion: @escaping ([ScrollArea]) -> Void) {
         ElementCollector.queue.async {
@@ -37,7 +37,11 @@ enum ScrollAreaCollector {
                     nowInside = true
                 }
             }
-            for child in (v[1] as? [AXElement] ?? []).reversed() { stack.append((child, nowInside)) }
+            // Web content scrolls as one area; its thousands of nodes hold no more scroll areas we can drive.
+            if role == "AXWebArea" { continue }
+            var children = v[1] as? [AXElement] ?? []
+            if children.isEmpty, let contents = v[4] as? [AXElement] { children = contents }
+            for child in children.reversed() { stack.append((child, nowInside)) }
         }
         // Drop near-duplicates (same frame reported by nested elements), keep largest first.
         var result: [ScrollArea] = []

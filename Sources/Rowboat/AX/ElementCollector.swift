@@ -13,6 +13,10 @@ final class ElementCollector {
         var timeBudget: TimeInterval = 0.9
         var enableChromiumAccessibility = true
         var messagingTimeout: Float = 0.5
+        /// Use AXUIElementsForSearchPredicate on web areas (Chromium, WebKit).
+        /// Visible elements of a long page come back in ~10 ms instead of a
+        /// walk that can take a second. Falls back to the walk when unsupported.
+        var useSearchPredicate = true
     }
 
     struct Report {
@@ -23,6 +27,9 @@ final class ElementCollector {
         var truncated = false
         var windowTitle = ""
         var visibleFrame = CGRect.zero
+        var emptyFrames = 0
+        var predicateResults = 0
+        var roleCounts: [String: Int] = [:]
         var error: String?
     }
 
@@ -51,7 +58,7 @@ final class ElementCollector {
     static let attributes = [
         kAXRoleAttribute, kAXSubroleAttribute, kAXChildrenAttribute, "AXVisibleChildren",
         kAXPositionAttribute, kAXSizeAttribute, kAXTitleAttribute, kAXDescriptionAttribute,
-        kAXValueAttribute, kAXEnabledAttribute,
+        kAXValueAttribute, kAXEnabledAttribute, "AXContents",
     ]
 
     private let options: Options
@@ -107,6 +114,8 @@ final class ElementCollector {
             let v = element.values(for: attributes)
             let role = v[0] as? String ?? ""
             let frame = AXElement.frame(position: v[4], size: v[5])
+            if RLog.echo { report.roleCounts[role, default: 0] += 1 }
+            if frame?.isEmpty ?? true { report.emptyFrames += 1 }
 
             // Prune subtrees that are entirely outside the visible region.
             if let f = frame, !f.isEmpty, !f.intersects(visible) {
@@ -114,6 +123,17 @@ final class ElementCollector {
                 continue
             }
             if depth >= options.maxDepth { continue }
+
+            if role == "AXWebArea", options.useSearchPredicate,
+               let results = Self.searchPredicate(on: element) {
+                report.predicateResults += results.count
+                for r in results {
+                    guard let target = Self.target(from: r, visible: visible) else { continue }
+                    report.candidates += 1
+                    found.append(target)
+                }
+                continue  // the predicate covered this subtree
+            }
 
             let isStructural = structuralRoles.contains(role)
             var isTarget = false
@@ -144,7 +164,9 @@ final class ElementCollector {
             }
 
             let visibleChildren = v[3] as? [AXElement] ?? []
-            let children = visibleChildren.isEmpty ? (v[2] as? [AXElement] ?? []) : visibleChildren
+            var children = visibleChildren.isEmpty ? (v[2] as? [AXElement] ?? []) : visibleChildren
+            // Finder's column view exposes its items only through AXContents.
+            if children.isEmpty, let contents = v[10] as? [AXElement] { children = contents }
             // Push in reverse so traversal order stays document order.
             for child in children.reversed() { stack.append((child, depth + 1, insideTarget || isTarget)) }
         }
@@ -156,6 +178,36 @@ final class ElementCollector {
         report.elapsed = Date().timeIntervalSince(start)
         Log.ax.info("collected \(targets.count) targets from \(report.visited) nodes in \(Int(report.elapsed * 1000)) ms (pruned \(report.pruned), truncated \(report.truncated))")
         return (targets, report)
+    }
+
+    static let predicateKeys = [
+        "AXButtonSearchKey", "AXCheckBoxSearchKey", "AXControlSearchKey", "AXLinkSearchKey",
+        "AXTextFieldSearchKey", "AXRadioGroupSearchKey", "AXKeyboardFocusableSearchKey",
+    ]
+
+    /// Visible interactive elements of a web area via the (private but long
+    /// standing) search predicate parameterized attribute. nil when unsupported.
+    static func searchPredicate(on webArea: AXElement) -> [AXElement]? {
+        let predicate: [String: Any] = [
+            "AXDirection": "AXDirectionNext", "AXImmediateDescendantsOnly": false,
+            "AXResultsLimit": 2000, "AXVisibleOnly": true, "AXSearchKey": predicateKeys,
+        ]
+        guard let results = webArea.parameterized("AXUIElementsForSearchPredicate", parameter: predicate) as? [AXElement] else {
+            return nil
+        }
+        return results
+    }
+
+    /// Builds a target from an element returned by the predicate.
+    static func target(from element: AXElement, visible: CGRect) -> HintTarget? {
+        let v = element.values(for: [kAXRoleAttribute, kAXPositionAttribute, kAXSizeAttribute, kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, kAXEnabledAttribute])
+        let role = v[0] as? String ?? ""
+        guard !structuralRoles.contains(role), (v[6] as? Bool) ?? true,
+              let f = AXElement.frame(position: v[1], size: v[2]), f.width >= 2, f.height >= 2, f.intersects(visible) else { return nil }
+        let actions = element.actionNames
+        return HintTarget(element: element, frame: f.intersection(visible), role: role,
+                          title: text(v[3]), description: text(v[4]), value: text(v[5]),
+                          supportsPress: actions.contains(kAXPressAction))
     }
 
     /// First static text found up to two levels below `children` (rows hold
