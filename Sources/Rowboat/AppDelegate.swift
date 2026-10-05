@@ -8,12 +8,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var settingsWindow: SettingsWindowController?
     private var settingsObserver: AnyCancellable?
     private var trustTimer: Timer?
+    private var enabler: AccessibilityEnabler?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         if handOffToRunningInstance() { return }
         Log.app.info("Rowboat starting")
         statusItem = StatusItemController(modes: modes) { [weak self] in self?.showSettings() }
         registerHotKeys()
+        if Permissions.accessibilityTrusted(prompt: false) { enabler = AccessibilityEnabler() }
 
         settingsObserver = Settings.shared.objectWillChange
             .debounce(for: .milliseconds(200), scheduler: DispatchQueue.main)
@@ -33,6 +35,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     timer.invalidate()
                     Log.app.info("accessibility granted")
                     self?.registerHotKeys()
+                    self?.enabler = AccessibilityEnabler()
                 }
             }
         }

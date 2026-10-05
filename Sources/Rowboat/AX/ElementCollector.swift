@@ -81,7 +81,7 @@ final class ElementCollector {
         // first request (Electron even reports the enhanced interface as already
         // on); a near-empty result from such an app means it was not ready yet.
         if report.wantsEnhancedInterface, targets.count < 5 {
-            usleep(600_000)
+            usleep(1_000_000)
             (targets, report) = walkOnce(app: app, options: options)
             report.retried = true
         }
