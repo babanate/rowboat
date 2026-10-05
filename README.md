@@ -14,11 +14,23 @@ Chrome, Safari, Notes and System Settings (see "Verified").
 |---|---|---|
 | Click labels | ⇧Space | Labels every clickable element in the frontmost window. Type a label to click it. Shift on the last letter right-clicks, ⌘ command-clicks, ⌥ double-clicks, ⌃ middle-clicks. Backspace edits, Escape leaves. |
 | Scroll | ⇧⌘J | Outlines each scroll area with a number. `h j k l` or the arrow keys scroll the selected one, Shift dashes, `d`/`u` half-page, `g g`/`G` top and bottom, Space/⇧Space page, a digit or Tab switches areas. |
-| Search | ⇧/ | Type part of an element's title, description or value. The best nine matches get labels 1 to 9; Return clicks the best one. |
+| Search | none by default | Type part of an element's title, description or value. The best nine matches get labels 1 to 9; Return clicks the best one. Give it a shortcut in Settings if you want it. |
 
 Pressing a mode's shortcut again, or switching apps, leaves the mode. The
 keyboard is never left captured: if macOS disables the event tap, Rowboat
 re-enables it once and otherwise ends the mode.
+
+Any shortcut can be changed or removed in Settings (click the box, press the
+keys, or press Delete for none). A mode without a shortcut is still in the
+menu bar menu. A hyper key from Raycast, Karabiner or similar records as
+⌃⌥⇧⌘ plus the key and works as a trigger.
+
+What gets a label: buttons, links, fields, rows, cells, menu bar items, and
+(by default) static text and images in native apps, so almost anything on
+screen can be clicked. Web pages are read through the browser's search
+predicate: controls, links, graphics, and named clickable groups such as
+cards and list rows. Turn off "Label text and images" in Settings for a
+sparser view.
 
 ## Install
 
