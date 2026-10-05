@@ -21,12 +21,13 @@ final class Settings: ObservableObject {
         case showMenuBarIcon
         case warpCursorInScrollMode
         case restoreCursorAfterClick
+        case labelTextAndImages
     }
 
     // Defaults mirror Homerow's so switching is painless.
     static let defaultHintsShortcut = KeyShortcut(keyCode: 49, modifiers: .shift)            // ⇧Space
     static let defaultScrollShortcut = KeyShortcut(keyCode: 38, modifiers: [.shift, .command]) // ⇧⌘J
-    static let defaultSearchShortcut = KeyShortcut(keyCode: 44, modifiers: .shift)           // ⇧/
+    static let defaultSearchShortcut: KeyShortcut? = nil   // ⇧/ steals "?"; opt in from Settings
     static let defaultLabelCharacters = "asdfjklghqwertyuiopzxcvbnm"
     /// WebKit browsers expose their page only after AXEnhancedUserInterface is set.
     static let webKitBundlePrefixes = ["com.apple.Safari", "com.apple.SafariTechnologyPreview", "org.webkit"]
@@ -35,16 +36,17 @@ final class Settings: ObservableObject {
         "com.vivaldi.Vivaldi", "company.thebrowser.Browser", "com.operasoftware.Opera",
     ]
 
-    var hintsShortcut: KeyShortcut {
-        get { shortcut(.hintsShortcut) ?? Self.defaultHintsShortcut }
+    // nil means "no shortcut"; the mode stays reachable from the menu bar.
+    var hintsShortcut: KeyShortcut? {
+        get { shortcut(.hintsShortcut, default: Self.defaultHintsShortcut) }
         set { setShortcut(newValue, .hintsShortcut) }
     }
-    var scrollShortcut: KeyShortcut {
-        get { shortcut(.scrollShortcut) ?? Self.defaultScrollShortcut }
+    var scrollShortcut: KeyShortcut? {
+        get { shortcut(.scrollShortcut, default: Self.defaultScrollShortcut) }
         set { setShortcut(newValue, .scrollShortcut) }
     }
-    var searchShortcut: KeyShortcut {
-        get { shortcut(.searchShortcut) ?? Self.defaultSearchShortcut }
+    var searchShortcut: KeyShortcut? {
+        get { shortcut(.searchShortcut, default: Self.defaultSearchShortcut) }
         set { setShortcut(newValue, .searchShortcut) }
     }
     var labelCharacters: String {
@@ -85,6 +87,12 @@ final class Settings: ObservableObject {
         set { set(newValue, .warpCursorInScrollMode) }
     }
 
+    /// Label static text and images in native apps too, not only controls.
+    var labelTextAndImages: Bool {
+        get { bool(.labelTextAndImages, default: true) }
+        set { set(newValue, .labelTextAndImages) }
+    }
+
     var restoreCursorAfterClick: Bool {
         get { bool(.restoreCursorAfterClick, default: false) }
         set { set(newValue, .restoreCursorAfterClick) }
@@ -119,13 +127,16 @@ final class Settings: ObservableObject {
 
     // MARK: storage helpers
 
-    private func shortcut(_ key: Key) -> KeyShortcut? {
-        guard let data = defaults.data(forKey: key.rawValue) else { return nil }
-        return try? JSONDecoder().decode(KeyShortcut.self, from: data)
+    /// Absent key: the default. Empty data: explicitly none.
+    private func shortcut(_ key: Key, default d: KeyShortcut?) -> KeyShortcut? {
+        guard let data = defaults.data(forKey: key.rawValue) else { return d }
+        if data.isEmpty { return nil }
+        return (try? JSONDecoder().decode(KeyShortcut.self, from: data)) ?? d
     }
-    private func setShortcut(_ value: KeyShortcut, _ key: Key) {
+    private func setShortcut(_ value: KeyShortcut?, _ key: Key) {
         objectWillChange.send()
-        defaults.set(try? JSONEncoder().encode(value), forKey: key.rawValue)
+        let data = value.flatMap { try? JSONEncoder().encode($0) } ?? Data()
+        defaults.set(data, forKey: key.rawValue)
     }
     private func bool(_ key: Key, default d: Bool) -> Bool {
         defaults.object(forKey: key.rawValue) == nil ? d : defaults.bool(forKey: key.rawValue)

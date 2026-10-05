@@ -56,9 +56,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func registerHotKeys() {
         hotKeys.unregisterAll()
         let s = Settings.shared
-        hotKeys.register(s.hintsShortcut) { [weak self] in self?.modes.activate(.hints) }
-        hotKeys.register(s.scrollShortcut) { [weak self] in self?.modes.activate(.scroll) }
-        hotKeys.register(s.searchShortcut) { [weak self] in self?.modes.activate(.search) }
+        if let k = s.hintsShortcut { hotKeys.register(k) { [weak self] in self?.modes.activate(.hints) } }
+        if let k = s.scrollShortcut { hotKeys.register(k) { [weak self] in self?.modes.activate(.scroll) } }
+        if let k = s.searchShortcut { hotKeys.register(k) { [weak self] in self?.modes.activate(.search) } }
     }
 
     @objc private func activateFromNotification(_ note: Notification) {

@@ -12,6 +12,7 @@ enum CLI {
             guard let app = resolveApp(args.dropFirst().first) else { return 1 }
             var options = ElementCollector.Options()
             options.enableChromiumAccessibility = Settings.shared.enableChromiumAccessibility
+            options.labelTextAndImages = Settings.shared.labelTextAndImages
             let (targets, report) = ElementCollector.collectSync(app: app, options: options)
             print("app: \(app.bundleIdentifier ?? "?") pid \(app.processIdentifier) window: \(report.windowTitle)")
             print("visited \(report.visited) nodes, pruned \(report.pruned), empty frames \(report.emptyFrames), predicate \(report.predicateResults), \(targets.count) targets, \(Int(report.elapsed * 1000)) ms\(report.truncated ? " (truncated)" : "")\(report.error.map { " error: \($0)" } ?? "")")

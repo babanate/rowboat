@@ -56,8 +56,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(quit)
     }
 
-    private func modeItem(_ title: String, _ shortcut: KeyShortcut, _ action: Selector) -> NSMenuItem {
-        let item = NSMenuItem(title: "\(title)    \(shortcut.displayString)", action: action, keyEquivalent: "")
+    private func modeItem(_ title: String, _ shortcut: KeyShortcut?, _ action: Selector) -> NSMenuItem {
+        let item = NSMenuItem(title: "\(title)    \(shortcut?.displayString ?? "")", action: action, keyEquivalent: "")
         item.target = self
         return item
     }

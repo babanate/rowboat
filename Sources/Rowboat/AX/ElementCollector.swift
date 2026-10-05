@@ -17,6 +17,8 @@ final class ElementCollector {
         /// Visible elements of a long page come back in ~10 ms instead of a
         /// walk that can take a second. Falls back to the walk when unsupported.
         var useSearchPredicate = true
+        /// Static text and images in native views become targets (Homerow does this).
+        var labelTextAndImages = true
     }
 
     struct Report {
@@ -120,6 +122,9 @@ final class ElementCollector {
         let screenBounds = NSScreen.screens.reduce(CGRect.null) { $0.union(Self.axRect(for: $1)) }
         let windowFrame = window.frame ?? screenBounds
         let visible = windowFrame.intersection(screenBounds)
+        // Menu bars sit above the window; let targets anywhere on screen through
+        // but keep window geometry for label placement.
+        let reach = visible.union(CGRect(x: screenBounds.minX, y: screenBounds.minY, width: screenBounds.width, height: 40))
         report.visibleFrame = visible
 
         var found: [HintTarget] = []
@@ -131,6 +136,10 @@ final class ElementCollector {
                 stack.append((extra, 0, false))
             }
         }
+        // The app's menu bar (File, Edit, ...) and the status items on the right,
+        // walked after the window (the stack pops from the end).
+        if let extras = appElement.element("AXExtrasMenuBar") { stack.insert((extras, 0, false), at: 0) }
+        if let menuBar = appElement.element(kAXMenuBarAttribute) { stack.insert((menuBar, 0, false), at: 0) }
         let deadline = start.addingTimeInterval(options.timeBudget)
 
         while let (element, depth, insideTarget) = stack.popLast() {
@@ -146,7 +155,7 @@ final class ElementCollector {
             if frame?.isEmpty ?? true { report.emptyFrames += 1 }
 
             // Prune subtrees that are entirely outside the visible region.
-            if let f = frame, !f.isEmpty, !f.intersects(visible) {
+            if let f = frame, !f.isEmpty, !f.intersects(reach) {
                 report.pruned += 1
                 continue
             }
@@ -166,11 +175,12 @@ final class ElementCollector {
             let isStructural = structuralRoles.contains(role)
             var isTarget = false
             if !isStructural, !(insideTarget && passiveInsideTarget.contains(role)),
-               let f = frame, f.width >= 2, f.height >= 2, f.intersects(visible) {
+               let f = frame, f.width >= 2, f.height >= 2, f.intersects(reach) {
                 let enabled = (v[9] as? Bool) ?? true
                 let actions = element.actionNames
                 let press = actions.contains(kAXPressAction)
-                let clickable = press || clickableRoles.contains(role) || actions.contains("AXOpen") || actions.contains("AXConfirm")
+                let textOrImage = options.labelTextAndImages && !insideTarget && (role == "AXStaticText" || role == "AXImage")
+                let clickable = press || clickableRoles.contains(role) || actions.contains("AXOpen") || actions.contains("AXConfirm") || textOrImage
                 if clickable && enabled {
                     isTarget = true
                     report.candidates += 1
@@ -185,12 +195,15 @@ final class ElementCollector {
                         }
                     }
                     found.append(HintTarget(
-                        element: element, frame: f.intersection(visible), role: role,
+                        element: element, frame: f.intersection(reach), role: role,
                         title: title, description: description, value: value,
                         supportsPress: press))
                 }
             }
 
+            // A closed menu's items have no frames and can number in the thousands
+            // (Chrome's bookmarks); open menus arrive as AXMenu children of the app.
+            if role == "AXMenuBarItem" || role == "AXMenuButton" { continue }
             // Tables and outlines with thousands of rows: only the visible rows matter.
             let visibleRows = v[11] as? [AXElement] ?? []
             let visibleChildren = v[3] as? [AXElement] ?? []
@@ -213,6 +226,7 @@ final class ElementCollector {
     static let predicateKeys = [
         "AXButtonSearchKey", "AXCheckBoxSearchKey", "AXControlSearchKey", "AXLinkSearchKey",
         "AXTextFieldSearchKey", "AXRadioGroupSearchKey", "AXKeyboardFocusableSearchKey",
+        "AXGraphicSearchKey",
     ]
 
     /// Visible interactive elements of a web area via the (private but long
@@ -225,7 +239,26 @@ final class ElementCollector {
         guard let results = webArea.parameterized("AXUIElementsForSearchPredicate", parameter: predicate) as? [AXElement] else {
             return nil
         }
-        return results
+        // Clickable cards and rows are plain groups with a click handler; the
+        // standard keys skip them. Pull every visible element once and keep the
+        // groups that are pressable and carry a name (nameless ones are layout).
+        let anyPredicate: [String: Any] = [
+            "AXDirection": "AXDirectionNext", "AXImmediateDescendantsOnly": false,
+            "AXResultsLimit": 3000, "AXVisibleOnly": true, "AXSearchKey": ["AXAnyTypeSearchKey"],
+        ]
+        guard let everything = webArea.parameterized("AXUIElementsForSearchPredicate", parameter: anyPredicate) as? [AXElement] else {
+            return results
+        }
+        let known = Set(results)
+        var extra: [AXElement] = []
+        for element in everything where !known.contains(element) {
+            let v = element.values(for: [kAXRoleAttribute, kAXTitleAttribute, kAXDescriptionAttribute])
+            guard let role = v[0] as? String, role == "AXGroup" || role == "AXStaticText" || role == "AXCell" || role == "AXRow" || role == "AXListItem" else { continue }
+            let named = !text(v[1]).isEmpty || !text(v[2]).isEmpty
+            guard named, element.actionNames.contains(kAXPressAction) else { continue }
+            extra.append(element)
+        }
+        return results + extra
     }
 
     /// Builds a target from an element returned by the predicate.

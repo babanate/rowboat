@@ -40,7 +40,7 @@ final class SettingsWindowController: NSObject, NSTextViewDelegate, NSTextFieldD
         stack.addArrangedSubview(shortcutRow("Click labels", get: { self.settings.hintsShortcut }, set: { self.settings.hintsShortcut = $0 }))
         stack.addArrangedSubview(shortcutRow("Scroll", get: { self.settings.scrollShortcut }, set: { self.settings.scrollShortcut = $0 }))
         stack.addArrangedSubview(shortcutRow("Search", get: { self.settings.searchShortcut }, set: { self.settings.searchShortcut = $0 }))
-        stack.addArrangedSubview(caption("Press a shortcut again to leave a mode. Escape always leaves."))
+        stack.addArrangedSubview(caption("Click a box, then press the keys; press Delete instead to leave a mode without a shortcut (it stays in the menu bar menu). A hyper key from Raycast or Karabiner records as ⌃⌥⇧⌘ plus the key. Press a shortcut again to leave a mode; Escape always leaves."))
 
         stack.addArrangedSubview(header("Labels"))
         labelField = NSTextField(string: settings.labelCharacters)
@@ -48,6 +48,7 @@ final class SettingsWindowController: NSObject, NSTextViewDelegate, NSTextFieldD
         labelField.delegate = self
         labelField.widthAnchor.constraint(equalToConstant: 320).isActive = true
         stack.addArrangedSubview(labelled("Label characters", labelField))
+        stack.addArrangedSubview(toggle("Label text and images too, not only controls", get: { self.settings.labelTextAndImages }, set: { self.settings.labelTextAndImages = $0 }))
         stack.addArrangedSubview(caption("Home row first. Shift on the last letter right-clicks, ⌘ command-clicks, ⌥ double-clicks, ⌃ middle-clicks."))
 
         stack.addArrangedSubview(header("Scrolling"))
@@ -123,7 +124,7 @@ final class SettingsWindowController: NSObject, NSTextViewDelegate, NSTextFieldD
         return row
     }
 
-    private func shortcutRow(_ title: String, get: @escaping () -> KeyShortcut, set: @escaping (KeyShortcut) -> Void) -> NSView {
+    private func shortcutRow(_ title: String, get: @escaping () -> KeyShortcut?, set: @escaping (KeyShortcut?) -> Void) -> NSView {
         let recorder = ShortcutRecorderView()
         recorder.translatesAutoresizingMaskIntoConstraints = false
         recorder.widthAnchor.constraint(equalToConstant: 170).isActive = true
@@ -211,7 +212,7 @@ final class ActionTarget: NSObject {
 /// Click, then press a key combination. Escape cancels recording.
 final class ShortcutRecorderView: NSView {
     var shortcut: KeyShortcut? { didSet { needsDisplay = true } }
-    var onRecord: ((KeyShortcut) -> Void)?
+    var onRecord: ((KeyShortcut?) -> Void)?
     private var recording = false { didSet { needsDisplay = true } }
 
     override var acceptsFirstResponder: Bool { true }
@@ -221,6 +222,9 @@ final class ShortcutRecorderView: NSView {
     override func keyDown(with event: NSEvent) {
         guard recording else { super.keyDown(with: event); return }
         if event.keyCode == 53 { recording = false; window?.makeFirstResponder(nil); return }
+        if event.keyCode == 51 || event.keyCode == 117 {  // Delete clears the shortcut
+            onRecord?(nil); recording = false; window?.makeFirstResponder(nil); return
+        }
         let mods = event.modifierFlags.intersection(KeyShortcut.relevantFlags)
         guard !mods.isEmpty || KeyNames.special[event.keyCode] != nil else { return }
         onRecord?(KeyShortcut(keyCode: event.keyCode, modifiers: mods))
@@ -234,7 +238,7 @@ final class ShortcutRecorderView: NSView {
         path.fill()
         (recording ? NSColor.controlAccentColor : NSColor.separatorColor).setStroke()
         path.stroke()
-        let text = recording ? "Press keys…" : (shortcut?.displayString ?? "Click to record")
+        let text = recording ? "Press keys…" : (shortcut?.displayString ?? "None")
         let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 13), .foregroundColor: NSColor.labelColor]
         let size = (text as NSString).size(withAttributes: attrs)
         (text as NSString).draw(at: CGPoint(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2), withAttributes: attrs)

@@ -27,6 +27,7 @@ final class HintsMode: Mode {
     func begin() {
         var options = ElementCollector.Options()
         options.enableChromiumAccessibility = host.settings.enableChromiumAccessibility
+        options.labelTextAndImages = host.settings.labelTextAndImages
         if searchable { render() }
         ElementCollector(options: options).collect(app: host.app) { [weak self] targets, report in
             guard let self, !self.ended else { return }
