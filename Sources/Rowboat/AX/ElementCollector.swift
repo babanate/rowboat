@@ -267,7 +267,9 @@ final class ElementCollector {
             guard let bar = element.element("AXExtrasMenuBar") else { continue }
             for item in bar.children {
                 let v = item.values(for: [kAXRoleAttribute, kAXPositionAttribute, kAXSizeAttribute, kAXTitleAttribute, kAXDescriptionAttribute])
-                guard let f = AXElement.frame(position: v[1], size: v[2]), f.width >= 2, f.height >= 2, f.intersects(bounds) else { continue }
+                // Items hidden by a menu bar manager report frames elsewhere on screen; keep the menu bar band only.
+                guard let f = AXElement.frame(position: v[1], size: v[2]), f.width >= 2, f.height >= 2, f.intersects(bounds),
+                      f.minY >= bounds.minY, f.maxY <= bounds.minY + 40 else { continue }
                 targets.append(HintTarget(element: item, frame: f, role: v[0] as? String ?? "AXMenuBarItem",
                                           title: text(v[3]), description: text(v[4]).isEmpty ? (app.localizedName ?? "") : text(v[4]),
                                           value: "", supportsPress: true))
