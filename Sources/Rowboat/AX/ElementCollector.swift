@@ -22,6 +22,7 @@ final class ElementCollector {
         var elapsed: TimeInterval = 0
         var truncated = false
         var windowTitle = ""
+        var visibleFrame = CGRect.zero
         var error: String?
     }
 
@@ -41,6 +42,11 @@ final class ElementCollector {
     /// (the text inside a link, the cells of a row, the icon in a button).
     static let passiveInsideTarget: Set<String> = [
         "AXStaticText", "AXImage", "AXGroup", "AXHeading", "AXCell", "AXUnknown", "AXGenericElement", "AXText", "AXList",
+    ]
+    static let subroleNames = [
+        "AXCloseButton": "Close", "AXMinimizeButton": "Minimize", "AXZoomButton": "Zoom",
+        "AXFullScreenButton": "Full Screen", "AXToolbarButton": "Toolbar", "AXSearchField": "Search",
+        "AXIncrementArrow": "Increment", "AXDecrementArrow": "Decrement", "AXSortButton": "Sort",
     ]
     static let attributes = [
         kAXRoleAttribute, kAXSubroleAttribute, kAXChildrenAttribute, "AXVisibleChildren",
@@ -79,6 +85,7 @@ final class ElementCollector {
         let screenBounds = NSScreen.screens.reduce(CGRect.null) { $0.union(Self.axRect(for: $1)) }
         let windowFrame = window.frame ?? screenBounds
         let visible = windowFrame.intersection(screenBounds)
+        report.visibleFrame = visible
 
         var found: [HintTarget] = []
         // (element, depth, inside an element that is already a target)
@@ -119,9 +126,19 @@ final class ElementCollector {
                 if clickable && enabled {
                     isTarget = true
                     report.candidates += 1
+                    var title = Self.text(v[6])
+                    let description = Self.text(v[7])
+                    let value = Self.text(v[8])
+                    if title.isEmpty, description.isEmpty, value.isEmpty {
+                        if role == "AXRow" || role == "AXCell" {
+                            title = Self.innerText(of: v[2] as? [AXElement] ?? [])
+                        } else if let subrole = v[1] as? String, let name = subroleNames[subrole] {
+                            title = name
+                        }
+                    }
                     found.append(HintTarget(
                         element: element, frame: f.intersection(visible), role: role,
-                        title: Self.text(v[6]), description: Self.text(v[7]), value: Self.text(v[8]),
+                        title: title, description: description, value: value,
                         supportsPress: press))
                 }
             }
@@ -141,9 +158,30 @@ final class ElementCollector {
         return (targets, report)
     }
 
+    /// First static text found up to two levels below `children` (rows hold
+    /// cells, cells hold text). Bounded to a handful of IPC calls.
+    static func innerText(of children: [AXElement]) -> String {
+        var queue = children.prefix(4).map { ($0, 0) }
+        var looked = 0
+        while !queue.isEmpty, looked < 8 {
+            let (el, depth) = queue.removeFirst()
+            looked += 1
+            let v = el.values(for: [kAXRoleAttribute, kAXValueAttribute, kAXTitleAttribute, kAXChildrenAttribute])
+            let role = v[0] as? String ?? ""
+            if role == "AXStaticText" || role == "AXTextField" {
+                let t = text(v[1]).isEmpty ? text(v[2]) : text(v[1])
+                if !t.isEmpty { return t }
+            }
+            if depth < 1 { queue.append(contentsOf: (v[3] as? [AXElement] ?? []).prefix(4).map { ($0, depth + 1) }) }
+        }
+        return ""
+    }
+
     static func text(_ value: Any?) -> String {
         switch value {
-        case let s as String: return s.trimmingCharacters(in: .whitespacesAndNewlines)
+        case let s as String:
+            // Multi-line titles (Chrome extension buttons) keep only their first line.
+            return s.split(whereSeparator: \.isNewline).first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
         case let d as Double: return d == d.rounded() ? String(Int(d)) : String(d)
         case let b as Bool: return b ? "on" : "off"
         default: return ""

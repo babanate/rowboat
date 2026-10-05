@@ -42,3 +42,28 @@ import CoreGraphics
         #expect(placed[2] == anchors[2], "isolated labels stay on their anchor")
     }
 }
+
+@Suite struct LabelAnchorTests {
+    let visible = CGRect(x: 0, y: 0, width: 1000, height: 800)
+    let size = CGSize(width: 24, height: 16)
+
+    @Test func labelSitsLeftOfElementWhenThereIsRoom() {
+        let frame = CGRect(x: 400, y: 100, width: 200, height: 20)
+        let a = HintLayout.labelAnchor(for: frame, labelSize: size, within: visible)
+        #expect(a.x + size.width < frame.minX)
+        #expect(a.y == 102)  // vertically centred on the element
+    }
+
+    @Test func labelOverlapsLeftEdgeWhenElementTouchesTheWindowEdge() {
+        let frame = CGRect(x: 4, y: 100, width: 200, height: 20)
+        let a = HintLayout.labelAnchor(for: frame, labelSize: size, within: visible)
+        #expect(a.x >= visible.minX)
+        #expect(a.x <= frame.minX)
+    }
+
+    @Test func labelStaysInsideVisibleVertically() {
+        let frame = CGRect(x: 400, y: -10, width: 200, height: 12)
+        let a = HintLayout.labelAnchor(for: frame, labelSize: size, within: visible)
+        #expect(a.y == visible.minY)
+    }
+}

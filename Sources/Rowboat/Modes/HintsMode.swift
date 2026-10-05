@@ -40,7 +40,7 @@ final class HintsMode: Mode {
             if !self.searchable {
                 self.labels = LabelGenerator(alphabet: self.host.settings.labelCharacters).labels(count: targets.count)
             }
-            self.anchors = Self.anchors(for: targets, labels: self.searchable ? [] : self.labels)
+            self.anchors = Self.anchors(for: targets, labels: self.searchable ? [] : self.labels, visible: report.visibleFrame)
             if RLog.echo, !self.searchable {
                 for (i, t) in targets.enumerated() { Log.mode.info("label \(self.labels[i]) -> \(t.role) '\(t.displayName)' @\(Int(t.frame.minX)),\(Int(t.frame.minY))") }
             }
@@ -51,11 +51,9 @@ final class HintsMode: Mode {
         }
     }
 
-    static func anchors(for targets: [HintTarget], labels: [String]) -> [CGPoint] {
+    static func anchors(for targets: [HintTarget], labels: [String], visible: CGRect) -> [CGPoint] {
         let size = OverlayTheme.labelSize(for: labels.max(by: { $0.count < $1.count }) ?? "88")
-        let raw = targets.map { t in
-            CGPoint(x: t.frame.minX - 2, y: max(0, t.frame.midY - size.height / 2))
-        }
+        let raw = targets.map { HintLayout.labelAnchor(for: $0.frame, labelSize: size, within: visible) }
         return HintLayout.placeLabels(anchors: raw, labelSize: size)
     }
 

@@ -68,3 +68,17 @@ public enum HintLayout {
         return result
     }
 }
+
+extension HintLayout {
+    /// Top-left anchor for a label on `frame`. The label sits just outside the
+    /// element's left edge when that keeps it inside `visible`, so it does
+    /// not cover the element's text; otherwise it overlaps the left edge.
+    public static func labelAnchor(for frame: CGRect, labelSize: CGSize, within visible: CGRect, gap: CGFloat = 3) -> CGPoint {
+        let y = max(visible.minY, min(frame.midY - labelSize.height / 2, visible.maxY - labelSize.height))
+        let outsideX = frame.minX - labelSize.width - gap
+        if outsideX >= visible.minX {
+            return CGPoint(x: outsideX, y: y)
+        }
+        return CGPoint(x: max(visible.minX, frame.minX - 2), y: y)
+    }
+}
