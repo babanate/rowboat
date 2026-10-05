@@ -37,7 +37,11 @@ final class ElementCollector {
         "AXWindow", "AXSheet", "AXDrawer", "AXScrollArea", "AXSplitGroup", "AXSplitter", "AXToolbar",
         "AXWebArea", "AXLayoutArea", "AXTabGroup", "AXMenuBar", "AXMenu",
     ]
-    /// AXRow is a target only when it is not a plain container of an outline.
+    /// Roles that are not separate targets when an ancestor is already one
+    /// (the text inside a link, the cells of a row, the icon in a button).
+    static let passiveInsideTarget: Set<String> = [
+        "AXStaticText", "AXImage", "AXGroup", "AXHeading", "AXCell", "AXUnknown", "AXGenericElement", "AXText", "AXList",
+    ]
     static let attributes = [
         kAXRoleAttribute, kAXSubroleAttribute, kAXChildrenAttribute, "AXVisibleChildren",
         kAXPositionAttribute, kAXSizeAttribute, kAXTitleAttribute, kAXDescriptionAttribute,
@@ -77,16 +81,17 @@ final class ElementCollector {
         let visible = windowFrame.intersection(screenBounds)
 
         var found: [HintTarget] = []
-        var stack: [(AXElement, Int)] = [(window, 0)]
+        // (element, depth, inside an element that is already a target)
+        var stack: [(AXElement, Int, Bool)] = [(window, 0, false)]
         // Also include open menus and popovers of the app (combo box lists, context menus).
         for extra in appElement.children where extra != window {
             if let role = extra.role, role == "AXMenu" || role == "AXPopover" || role == "AXSheet" {
-                stack.append((extra, 0))
+                stack.append((extra, 0, false))
             }
         }
         let deadline = start.addingTimeInterval(options.timeBudget)
 
-        while let (element, depth) = stack.popLast() {
+        while let (element, depth, insideTarget) = stack.popLast() {
             if report.visited >= options.maxNodes || Date() > deadline {
                 report.truncated = true
                 break
@@ -104,12 +109,15 @@ final class ElementCollector {
             if depth >= options.maxDepth { continue }
 
             let isStructural = structuralRoles.contains(role)
-            if !isStructural, let f = frame, f.width >= 2, f.height >= 2, f.intersects(visible) {
+            var isTarget = false
+            if !isStructural, !(insideTarget && passiveInsideTarget.contains(role)),
+               let f = frame, f.width >= 2, f.height >= 2, f.intersects(visible) {
                 let enabled = (v[9] as? Bool) ?? true
                 let actions = element.actionNames
                 let press = actions.contains(kAXPressAction)
                 let clickable = press || clickableRoles.contains(role) || actions.contains("AXOpen") || actions.contains("AXConfirm")
                 if clickable && enabled {
+                    isTarget = true
                     report.candidates += 1
                     found.append(HintTarget(
                         element: element, frame: f.intersection(visible), role: role,
@@ -121,7 +129,7 @@ final class ElementCollector {
             let visibleChildren = v[3] as? [AXElement] ?? []
             let children = visibleChildren.isEmpty ? (v[2] as? [AXElement] ?? []) : visibleChildren
             // Push in reverse so traversal order stays document order.
-            for child in children.reversed() { stack.append((child, depth + 1)) }
+            for child in children.reversed() { stack.append((child, depth + 1, insideTarget || isTarget)) }
         }
 
         let keep = HintLayout.dedupe(found.map(\.frame))
