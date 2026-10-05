@@ -74,7 +74,35 @@ final class ElementCollector {
         Self.queue.async {
             let (targets, report) = Self.collectSync(app: app, options: options)
             DispatchQueue.main.async { completion(targets, report) }
+            Self.refreshStatusItemsIfStale()
         }
+    }
+
+    // MARK: status items cache
+
+    private static var cachedStatusItems: [HintTarget] = []
+    private static var statusItemsRefreshedAt = Date.distantPast
+
+    /// Re-reads the status items on the AX queue when the cache is older than
+    /// `maxAge` seconds. Safe to call from any thread.
+    static func refreshStatusItemsIfStale(maxAge: TimeInterval = 15) {
+        queue.async {
+            guard Date().timeIntervalSince(statusItemsRefreshedAt) > maxAge else { return }
+            let bounds = NSScreen.screens.reduce(CGRect.null) { $0.union(axRect(for: $1)) }
+            AXUIElementSetMessagingTimeout(AXElement.systemWide.raw, 0.05)
+            let items = statusItems(excluding: ProcessInfo.processInfo.processIdentifier, within: bounds)
+            AXUIElementSetMessagingTimeout(AXElement.systemWide.raw, 0.5)
+            cachedStatusItems = items
+            statusItemsRefreshedAt = Date()
+            Log.ax.info("status items cached: \(items.count)")
+        }
+    }
+
+    /// Blocking refresh for the command line.
+    static func refreshStatusItemsNow() {
+        statusItemsRefreshedAt = .distantPast
+        refreshStatusItemsIfStale()
+        queue.sync {}
     }
 
     static func collectSync(app: NSRunningApplication, options: Options) -> ([HintTarget], Report) {
@@ -214,6 +242,11 @@ final class ElementCollector {
             for child in children.reversed() { stack.append((child, depth + 1, insideTarget || isTarget)) }
         }
 
+        // Status items on the right of the menu bar belong to other apps, each
+        // exposing its own AXExtrasMenuBar. Asking every app takes over a second
+        // on a busy Mac, so activation reads a cache that is refreshed afterwards.
+        found.append(contentsOf: cachedStatusItems.filter { $0.frame.intersects(screenBounds) })
+
         let keep = HintLayout.dedupe(found.map(\.frame))
         var targets = keep.map { found[$0] }
         let order = HintLayout.readingOrder(targets.map(\.frame))
@@ -221,6 +254,26 @@ final class ElementCollector {
         report.elapsed = Date().timeIntervalSince(start)
         Log.ax.info("collected \(targets.count) targets from \(report.visited) nodes in \(Int(report.elapsed * 1000)) ms (pruned \(report.pruned), truncated \(report.truncated))")
         return (targets, report)
+    }
+
+    static func statusItems(excluding pid: pid_t, within bounds: CGRect) -> [HintTarget] {
+        var targets: [HintTarget] = []
+        let apps = NSWorkspace.shared.runningApplications.filter {
+            $0.processIdentifier != pid && !$0.isTerminated && ($0.activationPolicy == .accessory || $0.activationPolicy == .regular)
+        }
+        for app in apps {
+            let element = AXElement.application(pid: app.processIdentifier)
+            AXUIElementSetMessagingTimeout(element.raw, 0.05)
+            guard let bar = element.element("AXExtrasMenuBar") else { continue }
+            for item in bar.children {
+                let v = item.values(for: [kAXRoleAttribute, kAXPositionAttribute, kAXSizeAttribute, kAXTitleAttribute, kAXDescriptionAttribute])
+                guard let f = AXElement.frame(position: v[1], size: v[2]), f.width >= 2, f.height >= 2, f.intersects(bounds) else { continue }
+                targets.append(HintTarget(element: item, frame: f, role: v[0] as? String ?? "AXMenuBarItem",
+                                          title: text(v[3]), description: text(v[4]).isEmpty ? (app.localizedName ?? "") : text(v[4]),
+                                          value: "", supportsPress: true))
+            }
+        }
+        return targets
     }
 
     static let predicateKeys = [

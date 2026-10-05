@@ -15,7 +15,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Log.app.info("Rowboat starting")
         statusItem = StatusItemController(modes: modes) { [weak self] in self?.showSettings() }
         registerHotKeys()
-        if Permissions.accessibilityTrusted(prompt: false) { enabler = AccessibilityEnabler() }
+        if Permissions.accessibilityTrusted(prompt: false) {
+            enabler = AccessibilityEnabler()
+            ElementCollector.refreshStatusItemsIfStale()
+        }
 
         settingsObserver = Settings.shared.objectWillChange
             .debounce(for: .milliseconds(200), scheduler: DispatchQueue.main)
@@ -36,6 +39,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     Log.app.info("accessibility granted")
                     self?.registerHotKeys()
                     self?.enabler = AccessibilityEnabler()
+                    ElementCollector.refreshStatusItemsIfStale()
                 }
             }
         }
