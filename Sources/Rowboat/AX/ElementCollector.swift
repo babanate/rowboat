@@ -58,7 +58,7 @@ final class ElementCollector {
     static let attributes = [
         kAXRoleAttribute, kAXSubroleAttribute, kAXChildrenAttribute, "AXVisibleChildren",
         kAXPositionAttribute, kAXSizeAttribute, kAXTitleAttribute, kAXDescriptionAttribute,
-        kAXValueAttribute, kAXEnabledAttribute, "AXContents",
+        kAXValueAttribute, kAXEnabledAttribute, "AXContents", "AXVisibleRows",
     ]
 
     private let options: Options
@@ -163,8 +163,10 @@ final class ElementCollector {
                 }
             }
 
+            // Tables and outlines with thousands of rows: only the visible rows matter.
+            let visibleRows = v[11] as? [AXElement] ?? []
             let visibleChildren = v[3] as? [AXElement] ?? []
-            var children = visibleChildren.isEmpty ? (v[2] as? [AXElement] ?? []) : visibleChildren
+            var children = !visibleRows.isEmpty ? visibleRows : (visibleChildren.isEmpty ? (v[2] as? [AXElement] ?? []) : visibleChildren)
             // Finder's column view exposes its items only through AXContents.
             if children.isEmpty, let contents = v[10] as? [AXElement] { children = contents }
             // Push in reverse so traversal order stays document order.

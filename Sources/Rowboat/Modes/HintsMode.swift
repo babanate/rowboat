@@ -107,8 +107,9 @@ final class HintsMode: Mode {
 
     private func updateMatches() {
         guard !query.isEmpty else { matches = []; return }
+        // Scattered subsequences across long titles score below zero; drop them.
         let scored = targets.enumerated().compactMap { i, t -> (Int, Double)? in
-            FuzzyMatcher.bestScore(query: query, fields: t.searchFields).map { (i, $0) }
+            FuzzyMatcher.bestScore(query: query, fields: t.searchFields).flatMap { $0 > 0 ? (i, $0) : nil }
         }
         matches = scored.sorted { $0.1 > $1.1 }.prefix(Self.searchLabels.count).map(\.0)
     }

@@ -27,11 +27,22 @@ Probed on this Mac (macOS 26, Swift 6.4, Homerow 1.2.2 running):
 | Recursive traversal, one attribute per call | 156 nodes, 82 ms | 398 nodes, 83 ms | 302 nodes, 49 ms |
 | Recursive traversal, `AXUIElementCopyMultipleAttributeValues` | - | - | 302 nodes, 26 ms |
 
+Later the same day, measured on a long Wikipedia article in Chrome: the walk
+visited 6814 nodes and hit the 900 ms budget with 140 targets, 4350 of those
+nodes reporting empty frames (offscreen content Chromium does not lay out);
+`AXUIElementsForSearchPredicate` on the same web area with `AXVisibleOnly`
+returned 118 interactive elements in 9 ms. Notes with 13,000 notes: the walk
+hit 900 ms over 6997 rows until `AXVisibleRows` was preferred, then 198 ms.
+
 Conclusions:
 
-1. Traversal with one batched attribute fetch per node is the primary
-   collection strategy. The search predicate is an optional accelerator for
-   web areas and must never be the only path.
+1. Traversal with one batched attribute fetch per node is the collection
+   strategy for native views. For `AXWebArea` nodes the search predicate is
+   primary (Chromium and WebKit both implement it) and the walk is the
+   fallback when the attribute is unsupported or returns nothing. Tables
+   and outlines are walked through `AXVisibleRows` when they offer it, and
+   containers with empty `AXChildren` through `AXContents` (Finder's column
+   view).
 2. Chromium exposes its web tree only when something asks for it. Rowboat sets
    `AXEnhancedUserInterface` on the application element of Chromium and
    Electron apps when the user enables that setting, and reads the tree only
@@ -157,8 +168,10 @@ Logging goes through `os.Logger` with a `rowboat` subsystem so
   terminal without a GUI.
 - `Rowboat --activate hints|scroll|search` sends a distributed notification
   to the running instance so modes can be triggered during development
-  without pressing the hotkey. Screenshots with `screencapture` verify the
-  overlay.
+  without pressing the hotkey; `--type` and `--hold` post key events with
+  real key codes. Screenshots with `screencapture` verify the overlay.
+  This is how the 2026-10-05 verification matrix (Finder, Chrome, Safari,
+  Notes, System Settings) was run.
 
 ## Packaging
 
