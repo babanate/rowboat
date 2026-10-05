@@ -202,12 +202,13 @@ final class ElementCollector {
 
             let isStructural = structuralRoles.contains(role)
             var isTarget = false
-            if !isStructural, !(insideTarget && passiveInsideTarget.contains(role)),
+            let leafText = options.labelTextAndImages && (role == "AXStaticText" || role == "AXImage")
+            if !isStructural, !(insideTarget && passiveInsideTarget.contains(role) && !leafText),
                let f = frame, f.width >= 2, f.height >= 2, f.intersects(reach) {
                 let enabled = (v[9] as? Bool) ?? true
                 let actions = element.actionNames
                 let press = actions.contains(kAXPressAction)
-                let textOrImage = options.labelTextAndImages && !insideTarget && (role == "AXStaticText" || role == "AXImage")
+                let textOrImage = leafText
                 let clickable = press || clickableRoles.contains(role) || actions.contains("AXOpen") || actions.contains("AXConfirm") || textOrImage
                 if clickable && enabled {
                     isTarget = true
@@ -247,8 +248,11 @@ final class ElementCollector {
         // on a busy Mac, so activation reads a cache that is refreshed afterwards.
         found.append(contentsOf: cachedStatusItems.filter { $0.frame.intersects(screenBounds) })
 
-        let keep = HintLayout.dedupe(found.map(\.frame))
-        var targets = keep.map { found[$0] }
+        let deduped = HintLayout.dedupe(found.map(\.frame)).map { found[$0] }
+        // A row, card or panel that encloses two or more labelled things gets
+        // no label of its own; its children are what the user wants to click.
+        let keep = HintLayout.dropContainers(deduped.map(\.frame))
+        var targets = keep.map { deduped[$0] }
         let order = HintLayout.readingOrder(targets.map(\.frame))
         targets = order.map { targets[$0] }
         report.elapsed = Date().timeIntervalSince(start)

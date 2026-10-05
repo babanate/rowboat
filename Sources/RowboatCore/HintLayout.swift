@@ -70,15 +70,32 @@ public enum HintLayout {
 }
 
 extension HintLayout {
-    /// Top-left anchor for a label on `frame`. The label sits just outside the
-    /// element's left edge when that keeps it inside `visible`, so it does
-    /// not cover the element's text; otherwise it overlaps the left edge.
-    public static func labelAnchor(for frame: CGRect, labelSize: CGSize, within visible: CGRect, gap: CGFloat = 3) -> CGPoint {
+    /// Top-left anchor for a label on `frame`: overlapping the element's own
+    /// left edge, vertically centred, clamped into `visible`. Overlapping the
+    /// element (rather than sitting beside it) keeps the association obvious
+    /// in dense layouts such as feeds and tables.
+    public static func labelAnchor(for frame: CGRect, labelSize: CGSize, within visible: CGRect) -> CGPoint {
         let y = max(visible.minY, min(frame.midY - labelSize.height / 2, visible.maxY - labelSize.height))
-        let outsideX = frame.minX - labelSize.width - gap
-        if outsideX >= visible.minX {
-            return CGPoint(x: outsideX, y: y)
+        let x = max(visible.minX, min(frame.minX - 2, visible.maxX - labelSize.width))
+        return CGPoint(x: x, y: y)
+    }
+
+    /// Indices to keep after dropping containers: frames that enclose at least
+    /// `minInner` other frames. Their children carry the labels instead. A
+    /// frame enclosing a single other frame is kept (a link around its text).
+    public static func dropContainers(_ frames: [CGRect], minInner: Int = 2) -> [Int] {
+        var keep: [Int] = []
+        for i in frames.indices {
+            var inner = 0
+            for j in frames.indices where j != i {
+                let a = frames[i], b = frames[j]
+                if a.contains(b) && (b.width < a.width || b.height < a.height) {
+                    inner += 1
+                    if inner >= minInner { break }
+                }
+            }
+            if inner < minInner { keep.append(i) }
         }
-        return CGPoint(x: max(visible.minX, frame.minX - 2), y: y)
+        return keep
     }
 }

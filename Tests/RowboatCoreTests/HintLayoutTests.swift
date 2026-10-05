@@ -47,23 +47,50 @@ import CoreGraphics
     let visible = CGRect(x: 0, y: 0, width: 1000, height: 800)
     let size = CGSize(width: 24, height: 16)
 
-    @Test func labelSitsLeftOfElementWhenThereIsRoom() {
+    @Test func labelOverlapsTheElementsLeftEdge() {
         let frame = CGRect(x: 400, y: 100, width: 200, height: 20)
         let a = HintLayout.labelAnchor(for: frame, labelSize: size, within: visible)
-        #expect(a.x + size.width < frame.minX)
+        #expect(a.x == 398)
         #expect(a.y == 102)  // vertically centred on the element
     }
 
-    @Test func labelOverlapsLeftEdgeWhenElementTouchesTheWindowEdge() {
-        let frame = CGRect(x: 4, y: 100, width: 200, height: 20)
+    @Test func labelStaysInsideVisibleHorizontally() {
+        let frame = CGRect(x: 0, y: 100, width: 200, height: 20)
         let a = HintLayout.labelAnchor(for: frame, labelSize: size, within: visible)
-        #expect(a.x >= visible.minX)
-        #expect(a.x <= frame.minX)
+        #expect(a.x == visible.minX)
+        let right = CGRect(x: 990, y: 100, width: 50, height: 20)
+        #expect(HintLayout.labelAnchor(for: right, labelSize: size, within: visible).x == visible.maxX - size.width)
     }
 
     @Test func labelStaysInsideVisibleVertically() {
         let frame = CGRect(x: 400, y: -10, width: 200, height: 12)
         let a = HintLayout.labelAnchor(for: frame, labelSize: size, within: visible)
         #expect(a.y == visible.minY)
+    }
+}
+
+
+@Suite struct ContainerTests {
+    @Test func containerWithTwoInnerTargetsIsDropped() {
+        let frames = [
+            CGRect(x: 0, y: 0, width: 500, height: 100),   // post row: contains the next two
+            CGRect(x: 10, y: 10, width: 40, height: 40),    // avatar
+            CGRect(x: 60, y: 10, width: 200, height: 20),   // name link
+            CGRect(x: 600, y: 0, width: 100, height: 20),   // unrelated
+        ]
+        #expect(HintLayout.dropContainers(frames) == [1, 2, 3])
+    }
+
+    @Test func wrapperAroundOneChildIsKept() {
+        let frames = [
+            CGRect(x: 0, y: 0, width: 200, height: 20),     // link
+            CGRect(x: 2, y: 2, width: 190, height: 16),     // its text
+        ]
+        #expect(HintLayout.dropContainers(frames) == [0, 1])
+    }
+
+    @Test func identicalFramesAreNotContainersOfEachOther() {
+        let frames = [CGRect(x: 0, y: 0, width: 100, height: 20), CGRect(x: 0, y: 0, width: 100, height: 20), CGRect(x: 0, y: 0, width: 100, height: 20)]
+        #expect(HintLayout.dropContainers(frames) == [0, 1, 2])
     }
 }
