@@ -26,7 +26,7 @@ public enum HintLayout {
     /// Indices of frames to keep after dropping near-duplicates. The first
     /// occurrence wins. Two frames are duplicates when their
     /// intersection-over-union exceeds `threshold`.
-    public static func dedupe(_ frames: [CGRect], threshold: CGFloat = 0.8) -> [Int] {
+    public static func dedupe(_ frames: [CGRect], threshold: CGFloat = 0.9) -> [Int] {
         var kept: [Int] = []
         outer: for i in frames.indices {
             for k in kept where iou(frames[i], frames[k]) > threshold {

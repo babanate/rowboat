@@ -25,9 +25,10 @@ struct OverlayScene {
 }
 
 enum OverlayTheme {
-    static let font = NSFont.systemFont(ofSize: 12, weight: .bold)
-    static let labelPadding = CGSize(width: 5, height: 2)
-    static let cornerRadius: CGFloat = 4
+    // Small and tight so dense screens fit more labels without crowding.
+    static let font = NSFont.systemFont(ofSize: 10, weight: .bold)
+    static let labelPadding = CGSize(width: 3.5, height: 1)
+    static let cornerRadius: CGFloat = 3
 
     static var labelBackground: NSColor { NSColor(calibratedRed: 1.0, green: 0.86, blue: 0.25, alpha: 1) }
     static var labelText: NSColor { .black }

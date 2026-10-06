@@ -25,7 +25,7 @@ import CoreGraphics
         let frames = [
             CGRect(x: 0, y: 0, width: 100, height: 20),
             CGRect(x: 0, y: 0, width: 100, height: 20),
-            CGRect(x: 1, y: 1, width: 98, height: 18),  // nearly identical, nested
+            CGRect(x: 0, y: 0, width: 99, height: 19),  // nearly identical, nested
             CGRect(x: 200, y: 0, width: 100, height: 20),
         ]
         #expect(HintLayout.dedupe(frames) == [0, 3])

@@ -22,7 +22,7 @@ final class ElementCollector {
         /// OCR the window when the tree yields fewer than `screenTextThreshold`
         /// targets inside it, or when the app is listed in `screenTextApps`.
         var screenTextFallback = true
-        var screenTextThreshold = 6
+        var screenTextThreshold = 10
         var screenTextApps: [String] = []
     }
 
@@ -331,9 +331,18 @@ final class ElementCollector {
         }
         let known = Set(results)
         var extra: [AXElement] = []
+        var plainText = 0
         for element in everything where !known.contains(element) {
-            let v = element.values(for: [kAXRoleAttribute, kAXTitleAttribute, kAXDescriptionAttribute])
-            guard let role = v[0] as? String, role == "AXGroup" || role == "AXStaticText" || role == "AXCell" || role == "AXRow" || role == "AXListItem" else { continue }
+            let v = element.values(for: [kAXRoleAttribute, kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute])
+            guard let role = v[0] as? String else { continue }
+            // Plain text and headings: labelled so any visible text can be clicked
+            // (selection, focus), capped so a wall of text stays readable.
+            if role == "AXStaticText" || role == "AXHeading", plainText < 250, !text(v[3]).isEmpty || !text(v[1]).isEmpty {
+                plainText += 1
+                extra.append(element)
+                continue
+            }
+            guard role == "AXGroup" || role == "AXCell" || role == "AXRow" || role == "AXListItem" else { continue }
             let named = !text(v[1]).isEmpty || !text(v[2]).isEmpty
             guard named, element.actionNames.contains(kAXPressAction) else { continue }
             extra.append(element)
