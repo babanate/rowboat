@@ -8,7 +8,8 @@ enum ClickKind {
 /// Performs clicks. Prefers AXPress for plain clicks because it reaches
 /// elements covered by other views; falls back to synthetic mouse events.
 enum Clicker {
-    static func click(_ target: HintTarget, kind: ClickKind) {
+    static func click(_ target: HintTarget, kind: ClickKind, raise: Bool = false) {
+        if raise { raiseWindow(of: target) }
         if kind == .left, target.supportsPress, let element = target.element {
             let err = element.perform(kAXPressAction)
             if err == .success {
@@ -18,6 +19,18 @@ enum Clicker {
             Log.mode.warning("AXPress failed (\(err.rawValue)); falling back to synthetic click")
         }
         synthesizeClick(at: target.center, kind: kind)
+    }
+
+    /// Brings the target's app and window to the front, so a synthetic click
+    /// lands as a click and not as a mere activation.
+    static func raiseWindow(of target: HintTarget) {
+        if target.pid > 0, let app = NSRunningApplication(processIdentifier: target.pid) {
+            app.activate()
+        }
+        if let element = target.element, let window = element.element(kAXWindowAttribute) {
+            window.perform("AXRaise")
+        }
+        usleep(90_000)
     }
 
     /// Posts a mouse click at `point` (AX top-left coordinates). The cursor is

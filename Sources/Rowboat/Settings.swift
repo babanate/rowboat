@@ -24,6 +24,8 @@ final class Settings: ObservableObject {
         case labelTextAndImages
         case screenTextFallback
         case screenTextApps
+        case labelAllWindows
+        case raiseWindowOnClick
     }
 
     // Defaults mirror Homerow's so switching is painless.
@@ -104,6 +106,17 @@ final class Settings: ObservableObject {
     var screenTextApps: [String] {
         get { defaults.stringArray(forKey: Key.screenTextApps.rawValue) ?? ["dev.warp.Warp-Stable", "dev.warp.Warp"] }
         set { set(newValue, .screenTextApps) }
+    }
+
+    /// Label every visible window of every app, not only the active one.
+    var labelAllWindows: Bool {
+        get { bool(.labelAllWindows, default: true) }
+        set { set(newValue, .labelAllWindows) }
+    }
+    /// Clicking into another app's window brings it to the front first.
+    var raiseWindowOnClick: Bool {
+        get { bool(.raiseWindowOnClick, default: true) }
+        set { set(newValue, .raiseWindowOnClick) }
     }
 
     var restoreCursorAfterClick: Bool {

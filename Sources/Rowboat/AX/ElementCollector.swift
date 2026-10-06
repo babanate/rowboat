@@ -126,28 +126,28 @@ final class ElementCollector {
         return (targets, report)
     }
 
+    /// Requests the enhanced interface from browser-like apps. Returns whether
+    /// it was requested and whether this was the first time (tree may be cold).
+    static func prepareApp(_ app: NSRunningApplication, _ appElement: AXElement, options: Options) -> (wants: Bool, enabledNow: Bool) {
+        let settings = Settings.shared
+        let wants = settings.isWebKitBrowser(bundleIdentifier: app.bundleIdentifier)
+            || (options.enableChromiumAccessibility && (settings.isChromium(bundleIdentifier: app.bundleIdentifier) || ElectronDetector.isElectron(app)))
+        guard wants else { return (false, false) }
+        let already = (appElement.value("AXEnhancedUserInterface") as? Bool) ?? false
+        appElement.set("AXEnhancedUserInterface", true)
+        appElement.set("AXManualAccessibility", true)
+        if !already { usleep(250_000) }
+        return (true, !already)
+    }
+
     private static func walkOnce(app: NSRunningApplication, options: Options) -> ([HintTarget], Report) {
         let start = Date()
         var report = Report()
         AXUIElementSetMessagingTimeout(AXElement.systemWide.raw, options.messagingTimeout)
         let appElement = AXElement.application(pid: app.processIdentifier)
-
-        // Safari shows its web area, and Chromium/Electron their whole page, only
-        // once an assistive client asks for the enhanced interface. Safari reports
-        // "not implemented" for the set and honours it anyway.
-        let settings = Settings.shared
-        let wantsEnhanced = settings.isWebKitBrowser(bundleIdentifier: app.bundleIdentifier)
-            || (options.enableChromiumAccessibility && (settings.isChromium(bundleIdentifier: app.bundleIdentifier) || ElectronDetector.isElectron(app)))
-        report.wantsEnhancedInterface = wantsEnhanced
-        if wantsEnhanced {
-            let already = (appElement.value("AXEnhancedUserInterface") as? Bool) ?? false
-            appElement.set("AXEnhancedUserInterface", true)
-            appElement.set("AXManualAccessibility", true)
-            if !already {
-                report.enabledEnhancedInterface = true
-                usleep(250_000)  // first time: give the app a moment to build its tree
-            }
-        }
+        let prepared = prepareApp(app, appElement, options: options)
+        report.wantsEnhancedInterface = prepared.wants
+        report.enabledEnhancedInterface = prepared.enabledNow
 
         guard let window = appElement.element(kAXFocusedWindowAttribute) ?? appElement.elements(kAXWindowsAttribute).first else {
             report.error = "no window"
@@ -156,27 +156,71 @@ final class ElementCollector {
         }
         report.windowTitle = window.string(kAXTitleAttribute) ?? ""
         let screenBounds = NSScreen.screens.reduce(CGRect.null) { $0.union(Self.axRect(for: $1)) }
-        let windowFrame = window.frame ?? screenBounds
-        let visible = windowFrame.intersection(screenBounds)
+        let visible = (window.frame ?? screenBounds).intersection(screenBounds)
+        report.visibleFrame = visible
+
+        var found = walkWindow(appElement: appElement, window: window, visible: visible, screenBounds: screenBounds,
+                               includeAppExtras: true, options: options, report: &report, deadline: start.addingTimeInterval(options.timeBudget))
+
+        // Status items on the right of the menu bar belong to other apps, each
+        // exposing its own AXExtrasMenuBar. Asking every app takes over a second
+        // on a busy Mac, so activation reads a cache that is refreshed afterwards.
+        found.append(contentsOf: cachedStatusItems.filter { $0.frame.intersects(screenBounds) })
+
+        // Screen text where the tree is bare (custom-drawn apps such as Warp).
+        let inWindow = found.filter { visible.contains($0.center) }.count
+        let wantsScreenText = options.screenTextApps.contains(app.bundleIdentifier ?? "") || (options.screenTextFallback && inWindow < options.screenTextThreshold)
+        if wantsScreenText {
+            let result = ScreenTextScanner.shared.scan(visible)
+            report.screenText = result.targets.count
+            report.screenTextElapsed = result.elapsed
+            report.screenTextError = result.error
+            let axFrames = found.map(\.frame)
+            found.append(contentsOf: result.targets.filter { t in !axFrames.contains { HintLayout.iou($0, t.frame) > 0.3 } })
+        }
+
+        var targets = finish(found)
+        for i in targets.indices { targets[i].pid = app.processIdentifier }
+        report.elapsed = Date().timeIntervalSince(start)
+        Log.ax.info("collected \(targets.count) targets from \(report.visited) nodes in \(Int(report.elapsed * 1000)) ms (pruned \(report.pruned), truncated \(report.truncated))")
+        return (targets, report)
+    }
+
+    /// Dedupe, drop containers, reading order.
+    static func finish(_ found: [HintTarget]) -> [HintTarget] {
+        let deduped = HintLayout.dedupe(found.map(\.frame)).map { found[$0] }
+        // A row, card or panel that encloses two or more labelled things gets
+        // no label of its own; its children are what the user wants to click.
+        let keep = HintLayout.dropContainers(deduped.map(\.frame))
+        let targets = keep.map { deduped[$0] }
+        let order = HintLayout.readingOrder(targets.map(\.frame))
+        return order.map { targets[$0] }
+    }
+
+    /// Walks one window's tree. `includeAppExtras` adds the app's open menus,
+    /// popovers and menu bar (only sensible for the frontmost app).
+    static func walkWindow(appElement: AXElement, window: AXElement, visible: CGRect, screenBounds: CGRect,
+                           includeAppExtras: Bool, options: Options, report: inout Report, deadline: Date) -> [HintTarget] {
         // Menu bars sit above the window; let targets anywhere on screen through
         // but keep window geometry for label placement.
-        let reach = visible.union(CGRect(x: screenBounds.minX, y: screenBounds.minY, width: screenBounds.width, height: 40))
-        report.visibleFrame = visible
+        let reach = includeAppExtras
+            ? visible.union(CGRect(x: screenBounds.minX, y: screenBounds.minY, width: screenBounds.width, height: 40))
+            : visible
 
         var found: [HintTarget] = []
         // (element, depth, inside an element that is already a target)
         var stack: [(AXElement, Int, Bool)] = [(window, 0, false)]
-        // Also include open menus and popovers of the app (combo box lists, context menus).
-        for extra in appElement.children where extra != window {
-            if let role = extra.role, role == "AXMenu" || role == "AXPopover" || role == "AXSheet" {
-                stack.append((extra, 0, false))
+        if includeAppExtras {
+            // Open menus and popovers of the app (combo box lists, context menus).
+            for extra in appElement.children where extra != window {
+                if let role = extra.role, role == "AXMenu" || role == "AXPopover" || role == "AXSheet" {
+                    stack.append((extra, 0, false))
+                }
             }
+            // The app's menu bar (File, Edit, ...), walked after the window (the stack pops from the end).
+            if let extras = appElement.element("AXExtrasMenuBar") { stack.insert((extras, 0, false), at: 0) }
+            if let menuBar = appElement.element(kAXMenuBarAttribute) { stack.insert((menuBar, 0, false), at: 0) }
         }
-        // The app's menu bar (File, Edit, ...) and the status items on the right,
-        // walked after the window (the stack pops from the end).
-        if let extras = appElement.element("AXExtrasMenuBar") { stack.insert((extras, 0, false), at: 0) }
-        if let menuBar = appElement.element(kAXMenuBarAttribute) { stack.insert((menuBar, 0, false), at: 0) }
-        let deadline = start.addingTimeInterval(options.timeBudget)
 
         while let (element, depth, insideTarget) = stack.popLast() {
             if report.visited >= options.maxNodes || Date() > deadline {
@@ -216,8 +260,7 @@ final class ElementCollector {
                 let enabled = (v[9] as? Bool) ?? true
                 let actions = element.actionNames
                 let press = actions.contains(kAXPressAction)
-                let textOrImage = leafText
-                let clickable = press || clickableRoles.contains(role) || actions.contains("AXOpen") || actions.contains("AXConfirm") || textOrImage
+                let clickable = press || clickableRoles.contains(role) || actions.contains("AXOpen") || actions.contains("AXConfirm") || leafText
                 if clickable && enabled {
                     isTarget = true
                     report.candidates += 1
@@ -250,35 +293,72 @@ final class ElementCollector {
             // Push in reverse so traversal order stays document order.
             for child in children.reversed() { stack.append((child, depth + 1, insideTarget || isTarget)) }
         }
+        return found
+    }
 
-        // Status items on the right of the menu bar belong to other apps, each
-        // exposing its own AXExtrasMenuBar. Asking every app takes over a second
-        // on a busy Mac, so activation reads a cache that is refreshed afterwards.
-        found.append(contentsOf: cachedStatusItems.filter { $0.frame.intersects(screenBounds) })
+    // MARK: every visible window
 
-        // Screen text where the tree is bare (custom-drawn apps such as Warp).
-        let inWindow = found.filter { visible.contains($0.center) }.count
-        let wantsScreenText = options.screenTextApps.contains(app.bundleIdentifier ?? "") || (options.screenTextFallback && inWindow < options.screenTextThreshold)
-        if wantsScreenText {
-            let result = ScreenTextScanner.shared.scan(visible)
-            report.screenText = result.targets.count
-            report.screenTextElapsed = result.elapsed
-            report.screenTextError = result.error
-            // Keep screen text that does not overlap an accessibility target.
-            let axFrames = found.map(\.frame)
-            found.append(contentsOf: result.targets.filter { t in !axFrames.contains { HintLayout.iou($0, t.frame) > 0.3 } })
+    struct Batch {
+        let window: SceneWindow?
+        let targets: [HintTarget]
+        let elapsed: TimeInterval
+    }
+
+    /// Collects the frontmost app's focused window first (with menus, status
+    /// items and screen text as usual), then every other visible window on
+    /// screen, one task per app, each clipped to its unoccluded region.
+    /// Batches arrive on the main thread as they finish; `done` follows the
+    /// last batch or the deadline, whichever comes first.
+    func collectAll(app: NSRunningApplication, deadline: TimeInterval = 1.5,
+                    batch: @escaping (Batch) -> Void, done: @escaping () -> Void) {
+        let options = self.options
+        let frontPid = app.processIdentifier
+        let start = Date()
+        let finished = DoneOnce(done)
+
+        Self.queue.async {
+            let scene = SceneBuilder.windows(frontmostPid: frontPid)
+            let (targets, report) = Self.collectSync(app: app, options: options)
+            let focusedFrame = report.visibleFrame
+            DispatchQueue.main.async { batch(Batch(window: scene.first { $0.isFrontmostApp && $0.frame.intersection(focusedFrame).width > focusedFrame.width * 0.8 }, targets: targets, elapsed: Date().timeIntervalSince(start))) }
+            Self.refreshStatusItemsIfStale()
+
+            // Other windows: skip the one just walked (by frame), group by app.
+            let others = scene.filter { !($0.isFrontmostApp && abs($0.frame.minX - focusedFrame.minX) < 3 && abs($0.frame.minY - focusedFrame.minY) < 3) }
+            let byPid = Dictionary(grouping: others, by: \.pid)
+            let group = DispatchGroup()
+            let screenBounds = NSScreen.screens.reduce(CGRect.null) { $0.union(Self.axRect(for: $1)) }
+            for (pid, windows) in byPid {
+                group.enter()
+                DispatchQueue.global(qos: .userInteractive).async {
+                    defer { group.leave() }
+                    guard let running = NSRunningApplication(processIdentifier: pid) else { return }
+                    let appElement = AXElement.application(pid: pid)
+                    AXUIElementSetMessagingTimeout(appElement.raw, 0.3)
+                    _ = Self.prepareApp(running, appElement, options: options)
+                    let axWindows = appElement.elements(kAXWindowsAttribute)
+                    for window in windows {
+                        if Date().timeIntervalSince(start) > deadline { return }
+                        guard let ax = axWindows.first(where: { w in
+                            guard let f = w.frame else { return false }
+                            return abs(f.minX - window.frame.minX) < 3 && abs(f.minY - window.frame.minY) < 3 && abs(f.width - window.frame.width) < 3
+                        }) else { continue }
+                        var report = Report()
+                        let visible = window.frame.intersection(screenBounds)
+                        let found = Self.walkWindow(appElement: appElement, window: ax, visible: visible, screenBounds: screenBounds,
+                                                    includeAppExtras: false, options: options, report: &report,
+                                                    deadline: start.addingTimeInterval(deadline))
+                        var targets = Self.finish(found.filter { window.isVisible($0.center) })
+                        for i in targets.indices { targets[i].pid = pid }
+                        Log.ax.info("window \(window.ownerName) '\(window.title.prefix(30))': \(targets.count) targets from \(report.visited) nodes")
+                        let elapsed = Date().timeIntervalSince(start)
+                        if !targets.isEmpty { DispatchQueue.main.async { batch(Batch(window: window, targets: targets, elapsed: elapsed)) } }
+                    }
+                }
+            }
+            group.notify(queue: .main) { finished.fire() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + deadline + 0.1) { finished.fire() }
         }
-
-        let deduped = HintLayout.dedupe(found.map(\.frame)).map { found[$0] }
-        // A row, card or panel that encloses two or more labelled things gets
-        // no label of its own; its children are what the user wants to click.
-        let keep = HintLayout.dropContainers(deduped.map(\.frame))
-        var targets = keep.map { deduped[$0] }
-        let order = HintLayout.readingOrder(targets.map(\.frame))
-        targets = order.map { targets[$0] }
-        report.elapsed = Date().timeIntervalSince(start)
-        Log.ax.info("collected \(targets.count) targets from \(report.visited) nodes in \(Int(report.elapsed * 1000)) ms (pruned \(report.pruned), truncated \(report.truncated))")
-        return (targets, report)
     }
 
     static func statusItems(excluding pid: pid_t, within bounds: CGRect) -> [HintTarget] {
@@ -397,6 +477,18 @@ final class ElementCollector {
         let primaryHeight = NSScreen.screens.first?.frame.height ?? screen.frame.height
         let f = screen.frame
         return CGRect(x: f.minX, y: primaryHeight - f.maxY, width: f.width, height: f.height)
+    }
+}
+
+/// Calls a closure once, from whichever of two paths gets there first.
+final class DoneOnce {
+    private var done = false
+    private let action: () -> Void
+    init(_ action: @escaping () -> Void) { self.action = action }
+    func fire() {
+        guard !done else { return }
+        done = true
+        action()
     }
 }
 

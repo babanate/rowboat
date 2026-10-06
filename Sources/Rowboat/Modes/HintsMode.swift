@@ -10,6 +10,8 @@ final class HintsMode: Mode {
     private var targets: [HintTarget] = []
     private var labels: [String] = []
     private var anchors: [CGPoint] = []
+    private var allocator: LabelAllocator?
+    private var labelSize = CGSize(width: 20, height: 14)
     private var typed = ""
     private var query = ""
     private var matches: [Int] = []
@@ -31,29 +33,59 @@ final class HintsMode: Mode {
         options.screenTextFallback = host.settings.screenTextFallback
         options.screenTextApps = host.settings.screenTextApps
         if searchable { render() }
-        ElementCollector(options: options).collect(app: host.app) { [weak self] targets, report in
-            guard let self, !self.ended else { return }
-            if report.screenTextError == "no screen recording permission" {
-                Self.askForScreenRecordingOnce()
-            }
-            if targets.isEmpty {
-                self.host.overlay.flash(report.error == nil ? "No targets" : "No window")
+        let collector = ElementCollector(options: options)
+        if host.settings.labelAllWindows {
+            collector.collectAll(app: host.app, batch: { [weak self] batch in
+                self?.absorb(batch.targets, visible: batch.window?.frame)
+            }, done: { [weak self] in
+                guard let self, !self.ended, self.targets.isEmpty else { return }
+                self.host.overlay.flash("No targets")
                 self.host.finish()
-                return
+            })
+        } else {
+            collector.collect(app: host.app) { [weak self] targets, report in
+                guard let self, !self.ended else { return }
+                if report.screenTextError == "no screen recording permission" { Self.askForScreenRecordingOnce() }
+                if targets.isEmpty {
+                    self.host.overlay.flash(report.error == nil ? "No targets" : "No window")
+                    self.host.finish()
+                    return
+                }
+                self.absorb(targets, visible: report.visibleFrame)
             }
-            self.targets = targets
-            self.loaded = true
-            if !self.searchable {
-                self.labels = LabelGenerator(alphabet: self.host.settings.labelCharacters).labels(count: targets.count)
+        }
+    }
+
+    /// Adds a batch of targets. The first batch sizes the label pool; later
+    /// ones get fresh labels without touching the ones already on screen.
+    private func absorb(_ batch: [HintTarget], visible: CGRect?) {
+        guard !ended, !batch.isEmpty else { return }
+        let screen = NSScreen.screens.reduce(CGRect.null) { $0.union(ElementCollector.axRect(for: $1)) }
+        let region = visible ?? screen
+        if allocator == nil {
+            let expected = batch.count + 120
+            allocator = LabelAllocator(alphabet: host.settings.labelCharacters, expected: expected)
+            labelSize = OverlayTheme.labelSize(for: String(repeating: "W", count: expected > 26 ? 2 : 1))
+        }
+        let first = targets.isEmpty
+        targets.append(contentsOf: batch)
+        if !searchable { labels.append(contentsOf: allocator!.next(batch.count)) }
+        // Existing anchors are placed first in the same order, so they keep their spots.
+        let raw = anchors + batch.map { HintLayout.labelAnchor(for: $0.frame, labelSize: labelSize, within: region.isNull ? screen : region) }
+        anchors = HintLayout.placeLabels(anchors: raw, labelSize: labelSize)
+        if RLog.echo, !searchable {
+            for (i, t) in batch.enumerated() {
+                let idx = targets.count - batch.count + i
+                Log.mode.info("label \(labels[idx]) -> \(t.role) '\(t.displayName)' @\(Int(t.frame.minX)),\(Int(t.frame.minY))")
             }
-            self.anchors = Self.anchors(for: targets, labels: self.searchable ? [] : self.labels, visible: report.visibleFrame)
-            if RLog.echo, !self.searchable {
-                for (i, t) in targets.enumerated() { Log.mode.info("label \(self.labels[i]) -> \(t.role) '\(t.displayName)' @\(Int(t.frame.minX)),\(Int(t.frame.minY))") }
-            }
-            self.render()
-            let replay = self.pending
-            self.pending = []
-            replay.forEach(self.handle)
+        }
+        if searchable { updateMatches() }
+        render()
+        if first {
+            loaded = true
+            let replay = pending
+            pending = []
+            replay.forEach(handle)
         }
     }
 
@@ -65,12 +97,6 @@ final class HintsMode: Mode {
         askedForScreenRecording = true
         Log.ax.warning("screen recording permission missing; asking")
         _ = ScreenCapture.hasPermission(prompt: true)
-    }
-
-    static func anchors(for targets: [HintTarget], labels: [String], visible: CGRect) -> [CGPoint] {
-        let size = OverlayTheme.labelSize(for: labels.max(by: { $0.count < $1.count }) ?? "88")
-        let raw = targets.map { HintLayout.labelAnchor(for: $0.frame, labelSize: size, within: visible) }
-        return HintLayout.placeLabels(anchors: raw, labelSize: size)
     }
 
     func handle(_ event: KeyEvent) {
@@ -132,10 +158,11 @@ final class HintsMode: Mode {
 
     private func activate(_ target: HintTarget, kind: ClickKind) {
         ended = true
+        let raise = host.settings.raiseWindowOnClick && target.pid != 0 && target.pid != host.app.processIdentifier
         host.finish()
         // Let the event tap release before the click lands.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
-            Clicker.click(target, kind: kind)
+            Clicker.click(target, kind: kind, raise: raise)
         }
     }
 

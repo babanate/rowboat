@@ -11,6 +11,8 @@ struct HintTarget {
     let description: String
     let value: String
     let supportsPress: Bool
+    /// Owning process; set for every target so clicks can raise the right app.
+    var pid: pid_t = 0
 
     var center: CGPoint { CGPoint(x: frame.midX, y: frame.midY) }
     var searchFields: [String] { [title, description, value, role.replacingOccurrences(of: "AX", with: "")] }

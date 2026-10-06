@@ -34,6 +34,23 @@ enum CLI {
                              t.role as NSString, t.displayName.prefix(60) as NSString, t.supportsPress ? "" : "  [no AXPress]"))
             }
             return 0
+        case "--dump-all":
+            // Every visible window, as hints mode sees them with "label every window" on.
+            guard let app = resolveApp(args.dropFirst().first) else { return 1 }
+            var options = ElementCollector.Options()
+            options.labelTextAndImages = Settings.shared.labelTextAndImages
+            options.screenTextFallback = Settings.shared.screenTextFallback
+            options.screenTextApps = Settings.shared.screenTextApps
+            let sem = DispatchSemaphore(value: 0)
+            let t0 = Date()
+            var total = 0
+            ElementCollector(options: options).collectAll(app: app, batch: { b in
+                total += b.targets.count
+                print(String(format: "%5d ms  %-18@ %4d targets  %@", Int(b.elapsed * 1000), (b.window?.ownerName ?? app.localizedName ?? "?") as NSString, b.targets.count, (b.window?.title ?? "(focused)").prefix(40) as NSString))
+            }, done: { print("done: \(total) targets in \(Int(Date().timeIntervalSince(t0) * 1000)) ms"); sem.signal() })
+            // Pump the main run loop so batches delivered via DispatchQueue.main print.
+            while sem.wait(timeout: .now()) != .success { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+            return 0
         case "--scroll-areas":
             guard let app = resolveApp(args.dropFirst().first) else { return 1 }
             for (i, a) in ScrollAreaCollector.collectSync(app: app).enumerated() {
@@ -72,6 +89,7 @@ enum CLI {
             print("""
             Rowboat developer CLI
               --dump [bundle-id]          list clickable targets of the frontmost (or named) app
+              --dump-all [bundle-id]      every visible window, batch by batch, with timings
               --scroll-areas [bundle-id]  list scroll areas
               --activate hints|scroll|search   trigger a mode in the running app
               --settings                  open settings in the running app

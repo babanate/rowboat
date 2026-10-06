@@ -50,6 +50,8 @@ final class SettingsWindowController: NSObject, NSTextViewDelegate, NSTextFieldD
         labelField.widthAnchor.constraint(equalToConstant: 320).isActive = true
         stack.addArrangedSubview(labelled("Label characters", labelField))
         stack.addArrangedSubview(toggle("Label text and images too, not only controls", get: { self.settings.labelTextAndImages }, set: { self.settings.labelTextAndImages = $0 }))
+        stack.addArrangedSubview(toggle("Label every visible window, not only the active one", get: { self.settings.labelAllWindows }, set: { self.settings.labelAllWindows = $0 }))
+        stack.addArrangedSubview(toggle("Clicking into another window brings it to the front", get: { self.settings.raiseWindowOnClick }, set: { self.settings.raiseWindowOnClick = $0 }))
         stack.addArrangedSubview(caption("Home row first. Shift on the last letter right-clicks, ⌘ command-clicks, ⌥ double-clicks, ⌃ middle-clicks."))
 
         stack.addArrangedSubview(header("Scrolling"))

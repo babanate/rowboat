@@ -104,6 +104,17 @@ developer CLI and checking screenshots and the target app's state:
 
 Each release is checked against that list before it is tagged.
 
+## Every visible window
+
+With "Label every visible window" on (the default), a press labels the
+active window first and then every other window you can see, each app walked
+in its own task and each window clipped to the part not covered by windows
+above it. Labels for later windows are appended; the ones already on screen
+never change, so you can start typing immediately. Clicking a label in
+another app's window brings that window to the front first (switch off
+under Labels if you want background clicks that leave focus alone; those
+work when the element supports an accessibility press).
+
 ## Screen text for apps that expose nothing
 
 Some apps draw their own interface and give the accessibility API nothing to
