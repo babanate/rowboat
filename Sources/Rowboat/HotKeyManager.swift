@@ -19,6 +19,7 @@ final class HotKeyManager {
             GetEventParameter(event, EventParamName(kEventParamDirectObject), EventParamType(typeEventHotKeyID),
                               nil, MemoryLayout<EventHotKeyID>.size, nil, &hotKeyID)
             let manager = Unmanaged<HotKeyManager>.fromOpaque(userData).takeUnretainedValue()
+            Log.input.info("hot key \(hotKeyID.id) fired")
             manager.handlers[hotKeyID.id]?()
             return noErr
         }, 1, &spec, selfPtr, &eventHandler)

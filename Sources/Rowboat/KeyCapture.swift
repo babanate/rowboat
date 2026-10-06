@@ -86,9 +86,10 @@ final class KeyCapture {
                                  modifiers: nsEvent.modifierFlags.intersection(KeyShortcut.relevantFlags),
                                  isRepeat: isKey ? nsEvent.isARepeat : false)
             handler?(event)
-            // Swallow keys; let modifier changes through so the user's
-            // modifier state stays consistent for other apps.
-            return kind == .flagsChanged ? Unmanaged.passUnretained(cgEvent) : nil
+            // Swallow key-downs. Key-ups and modifier changes pass through so
+            // the system's view of what is held (hot keys, modifier state) stays
+            // consistent; a stray key-up is harmless to the app underneath.
+            return kind == .down ? nil : Unmanaged.passUnretained(cgEvent)
         default:
             return Unmanaged.passUnretained(cgEvent)
         }

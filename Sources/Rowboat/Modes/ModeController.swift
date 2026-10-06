@@ -25,15 +25,26 @@ final class ModeController: ModeHost {
         }
     }
 
+    /// The mode a key event would trigger, if it matches a configured shortcut.
+    private func shortcutKind(for event: KeyEvent) -> ModeKind? {
+        let pairs: [(KeyShortcut?, ModeKind)] = [(settings.hintsShortcut, .hints), (settings.scrollShortcut, .scroll), (settings.searchShortcut, .search)]
+        for (shortcut, kind) in pairs {
+            if let s = shortcut, s.keyCode == event.keyCode, event.modifiers == s.flags { return kind }
+        }
+        return nil
+    }
+
     func activate(_ kind: ModeKind) {
         if let current {
             let same = current.kind == kind
+            Log.mode.info("re-press while \(current.kind.rawValue) active: \(same ? "ending" : "switching")")
             finish()
             if same { return }
         }
-        guard let front = NSWorkspace.shared.frontmostApplication else { return }
+        guard let front = NSWorkspace.shared.frontmostApplication else { Log.mode.warning("no frontmost app"); return }
         if front.processIdentifier == ProcessInfo.processInfo.processIdentifier {
             // Our own settings window is frontmost; nothing to label there.
+            Log.mode.info("Rowboat itself is frontmost; ignoring")
             return
         }
         if settings.isExcluded(bundleIdentifier: front.bundleIdentifier) {
@@ -45,7 +56,16 @@ final class ModeController: ModeHost {
             return
         }
         app = front
-        guard keyCapture.start(handler: { [weak self] event in self?.current?.handle(event) }) else {
+        // While a mode is open the tap owns the keyboard, so the hot key cannot
+        // fire; recognise the shortcuts here so a re-press still toggles.
+        guard keyCapture.start(handler: { [weak self] event in
+            guard let self else { return }
+            if event.kind == .down, !event.isRepeat, let kind = self.shortcutKind(for: event) {
+                self.activate(kind)
+                return
+            }
+            self.current?.handle(event)
+        }) else {
             overlay.flash("Could not capture keyboard", duration: 1.5)
             return
         }
