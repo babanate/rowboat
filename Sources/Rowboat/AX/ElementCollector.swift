@@ -6,6 +6,9 @@ import RowboatCore
 /// All AX traffic runs on `queue`; callbacks arrive on the main thread.
 final class ElementCollector {
     static let queue = DispatchQueue(label: "rowboat.ax", qos: .userInteractive)
+    /// Slow, non-urgent AX work (status items of every app) stays off the activation path.
+    static let backgroundQueue = DispatchQueue(label: "rowboat.ax.background", qos: .utility)
+    static let ocrQueue = DispatchQueue(label: "rowboat.ocr", qos: .userInteractive)
 
     struct Options {
         var maxNodes = 15_000
@@ -24,6 +27,8 @@ final class ElementCollector {
         var screenTextFallback = true
         var screenTextThreshold = 10
         var screenTextApps: [String] = []
+        /// collectAll runs screen text as its own batch; collectSync keeps it inline.
+        var inlineScreenText = true
     }
 
     struct Report {
@@ -39,6 +44,7 @@ final class ElementCollector {
         var wantsEnhancedInterface = false
         var enabledEnhancedInterface = false
         var retried = false
+        var wantsScreenText = false
         var screenText = 0
         var screenTextElapsed: TimeInterval = 0
         var screenTextError: String?
@@ -94,12 +100,10 @@ final class ElementCollector {
     /// Re-reads the status items on the AX queue when the cache is older than
     /// `maxAge` seconds. Safe to call from any thread.
     static func refreshStatusItemsIfStale(maxAge: TimeInterval = 15) {
-        queue.async {
+        backgroundQueue.async {
             guard Date().timeIntervalSince(statusItemsRefreshedAt) > maxAge else { return }
             let bounds = NSScreen.screens.reduce(CGRect.null) { $0.union(axRect(for: $1)) }
-            AXUIElementSetMessagingTimeout(AXElement.systemWide.raw, 0.05)
             let items = statusItems(excluding: ProcessInfo.processInfo.processIdentifier, within: bounds)
-            AXUIElementSetMessagingTimeout(AXElement.systemWide.raw, 0.5)
             cachedStatusItems = items
             statusItemsRefreshedAt = Date()
             Log.ax.info("status items cached: \(items.count)")
@@ -110,7 +114,7 @@ final class ElementCollector {
     static func refreshStatusItemsNow() {
         statusItemsRefreshedAt = .distantPast
         refreshStatusItemsIfStale()
-        queue.sync {}
+        backgroundQueue.sync {}
     }
 
     static func collectSync(app: NSRunningApplication, options: Options) -> ([HintTarget], Report) {
@@ -169,14 +173,13 @@ final class ElementCollector {
 
         // Screen text where the tree is bare (custom-drawn apps such as Warp).
         let inWindow = found.filter { visible.contains($0.center) }.count
-        let wantsScreenText = options.screenTextApps.contains(app.bundleIdentifier ?? "") || (options.screenTextFallback && inWindow < options.screenTextThreshold)
-        if wantsScreenText {
-            let result = ScreenTextScanner.shared.scan(visible)
+        report.wantsScreenText = options.screenTextApps.contains(app.bundleIdentifier ?? "") || (options.screenTextFallback && inWindow < options.screenTextThreshold)
+        if report.wantsScreenText, options.inlineScreenText {
+            let result = Self.screenText(in: visible, avoiding: found)
             report.screenText = result.targets.count
             report.screenTextElapsed = result.elapsed
             report.screenTextError = result.error
-            let axFrames = found.map(\.frame)
-            found.append(contentsOf: result.targets.filter { t in !axFrames.contains { HintLayout.iou($0, t.frame) > 0.3 } })
+            found.append(contentsOf: result.targets)
         }
 
         var targets = finish(found)
@@ -184,6 +187,15 @@ final class ElementCollector {
         report.elapsed = Date().timeIntervalSince(start)
         Log.ax.info("collected \(targets.count) targets from \(report.visited) nodes in \(Int(report.elapsed * 1000)) ms (pruned \(report.pruned), truncated \(report.truncated))")
         return (targets, report)
+    }
+
+    /// OCR of `region`, minus phrases that overlap an accessibility target.
+    static func screenText(in region: CGRect, avoiding existing: [HintTarget]) -> ScreenTextScanner.Result {
+        var result = ScreenTextScanner.shared.scan(region)
+        let axFrames = existing.map(\.frame)
+        result.targets = result.targets.filter { t in !axFrames.contains { HintLayout.iou($0, t.frame) > 0.3 } }
+        Log.ax.info("screen text: \(result.targets.count) in \(Int(result.elapsed * 1000)) ms\(result.fromCache ? " (cached)" : "")\(result.error.map { " (\($0))" } ?? "")")
+        return result
     }
 
     /// Dedupe, drop containers, reading order.
@@ -304,6 +316,7 @@ final class ElementCollector {
         let elapsed: TimeInterval
         /// Other visible windows still to come (sizes the label pool).
         var windowsPending: Int = 0
+        var screenTextError: String?
     }
 
     /// Collects the frontmost app's focused window first (with menus, status
@@ -320,8 +333,22 @@ final class ElementCollector {
 
         Self.queue.async {
             let scene = SceneBuilder.windows(frontmostPid: frontPid)
-            let (targets, report) = Self.collectSync(app: app, options: options)
+            var axOptions = options
+            axOptions.inlineScreenText = false
+            let (targets, report) = Self.collectSync(app: app, options: axOptions)
             let focusedFrame = report.visibleFrame
+            // Screen text runs beside the other windows, never ahead of the first paint.
+            if report.wantsScreenText {
+                let axTargets = targets
+                Self.ocrQueue.async {
+                    var result = Self.screenText(in: focusedFrame, avoiding: axTargets)
+                    for i in result.targets.indices { result.targets[i].pid = frontPid }
+                    let elapsed = Date().timeIntervalSince(start)
+                    DispatchQueue.main.async {
+                        batch(Batch(window: nil, targets: Self.finish(result.targets), elapsed: elapsed, screenTextError: result.error))
+                    }
+                }
+            }
             // Other windows: skip the one just walked (by frame), group by app.
             let others = scene.filter { !($0.isFrontmostApp && abs($0.frame.minX - focusedFrame.minX) < 3 && abs($0.frame.minY - focusedFrame.minY) < 3) }
             let focusedScene = scene.first { $0.isFrontmostApp && $0.frame.intersection(focusedFrame).width > focusedFrame.width * 0.8 }

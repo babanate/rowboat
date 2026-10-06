@@ -71,6 +71,8 @@ final class OverlayView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let drawStart = Date()
+        defer { if RLog.echo { Log.mode.info("overlay draw \(scene.hints.count) labels in \(Int(Date().timeIntervalSince(drawStart) * 1000)) ms") } }
 
         for o in scene.outlines {
             let path = NSBezierPath(roundedRect: o.frame.insetBy(dx: 1.5, dy: 1.5), xRadius: 6, yRadius: 6)

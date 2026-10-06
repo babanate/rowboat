@@ -11,6 +11,7 @@ final class HintsMode: Mode {
     private var labels: [String] = []
     private var anchors: [CGPoint] = []
     private var allocator: LabelAllocator?
+    private let began = Date()
     private var labelSize = CGSize(width: 20, height: 14)
     private var typed = ""
     private var query = ""
@@ -36,7 +37,12 @@ final class HintsMode: Mode {
         let collector = ElementCollector(options: options)
         if host.settings.labelAllWindows {
             collector.collectAll(app: host.app, batch: { [weak self] batch in
-                self?.absorb(batch.targets, visible: batch.window?.frame, windowsPending: batch.windowsPending)
+                guard let self else { return }
+                if batch.screenTextError == "no screen recording permission" {
+                    Self.askForScreenRecordingOnce()
+                    if self.targets.count < 12 { self.host.overlay.flash("Rowboat needs Screen Recording for this app", duration: 1.6) }
+                }
+                self.absorb(batch.targets, visible: batch.window?.frame, windowsPending: batch.windowsPending)
             }, done: { [weak self] in
                 guard let self, !self.ended, self.targets.isEmpty else { return }
                 self.host.overlay.flash("No targets")
@@ -82,7 +88,9 @@ final class HintsMode: Mode {
             }
         }
         if searchable { updateMatches() }
+        let t = Date()
         render()
+        Log.mode.info("\(first ? "first paint" : "batch") \(batch.count) targets at +\(Int(Date().timeIntervalSince(began) * 1000)) ms (render \(Int(Date().timeIntervalSince(t) * 1000)) ms, total \(targets.count))")
         if first {
             loaded = true
             let replay = pending

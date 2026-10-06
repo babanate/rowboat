@@ -108,6 +108,18 @@ final class SettingsWindowController: NSObject, NSTextViewDelegate, NSTextFieldD
         let grant = NSButton(title: "Grant Accessibility Access…", target: self, action: #selector(grantAccess))
         controls.append { grant.isHidden = Permissions.accessibilityTrusted(prompt: false) }
         stack.addArrangedSubview(grant)
+        let status = NSTextField(labelWithString: "")
+        status.font = .systemFont(ofSize: 11)
+        status.textColor = .secondaryLabelColor
+        controls.append {
+            let ax = Permissions.accessibilityTrusted(prompt: false) ? "granted" : "missing"
+            let sr = ScreenCapture.hasPermission(prompt: false) ? "granted" : "missing"
+            status.stringValue = "Accessibility: \(ax)   Screen Recording: \(sr)"
+        }
+        stack.addArrangedSubview(status)
+        let grantScreen = NSButton(title: "Grant Screen Recording…", target: self, action: #selector(grantScreen))
+        controls.append { grantScreen.isHidden = ScreenCapture.hasPermission(prompt: false) }
+        stack.addArrangedSubview(grantScreen)
 
         let container = NSView()
         container.addSubview(stack)
@@ -203,6 +215,11 @@ final class SettingsWindowController: NSObject, NSTextViewDelegate, NSTextFieldD
     }
 
     private var retained: [ActionTarget] = []
+
+    @objc private func grantScreen() {
+        _ = ScreenCapture.hasPermission(prompt: true)
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")!)
+    }
 
     @objc private func grantAccess() {
         _ = Permissions.accessibilityTrusted(prompt: true)
