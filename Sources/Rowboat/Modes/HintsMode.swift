@@ -36,7 +36,7 @@ final class HintsMode: Mode {
         let collector = ElementCollector(options: options)
         if host.settings.labelAllWindows {
             collector.collectAll(app: host.app, batch: { [weak self] batch in
-                self?.absorb(batch.targets, visible: batch.window?.frame)
+                self?.absorb(batch.targets, visible: batch.window?.frame, windowsPending: batch.windowsPending)
             }, done: { [weak self] in
                 guard let self, !self.ended, self.targets.isEmpty else { return }
                 self.host.overlay.flash("No targets")
@@ -58,12 +58,14 @@ final class HintsMode: Mode {
 
     /// Adds a batch of targets. The first batch sizes the label pool; later
     /// ones get fresh labels without touching the ones already on screen.
-    private func absorb(_ batch: [HintTarget], visible: CGRect?) {
+    private func absorb(_ batch: [HintTarget], visible: CGRect?, windowsPending: Int = 0) {
         guard !ended, !batch.isEmpty else { return }
         let screen = NSScreen.screens.reduce(CGRect.null) { $0.union(ElementCollector.axRect(for: $1)) }
         let region = visible ?? screen
         if allocator == nil {
-            let expected = batch.count + 120
+            // Reserve room only for windows that are actually coming, so a lone
+            // window keeps one-letter labels.
+            let expected = batch.count + windowsPending * 40
             allocator = LabelAllocator(alphabet: host.settings.labelCharacters, expected: expected)
             labelSize = OverlayTheme.labelSize(for: String(repeating: "W", count: expected > 26 ? 2 : 1))
         }

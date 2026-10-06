@@ -302,6 +302,8 @@ final class ElementCollector {
         let window: SceneWindow?
         let targets: [HintTarget]
         let elapsed: TimeInterval
+        /// Other visible windows still to come (sizes the label pool).
+        var windowsPending: Int = 0
     }
 
     /// Collects the frontmost app's focused window first (with menus, status
@@ -320,11 +322,12 @@ final class ElementCollector {
             let scene = SceneBuilder.windows(frontmostPid: frontPid)
             let (targets, report) = Self.collectSync(app: app, options: options)
             let focusedFrame = report.visibleFrame
-            DispatchQueue.main.async { batch(Batch(window: scene.first { $0.isFrontmostApp && $0.frame.intersection(focusedFrame).width > focusedFrame.width * 0.8 }, targets: targets, elapsed: Date().timeIntervalSince(start))) }
-            Self.refreshStatusItemsIfStale()
-
             // Other windows: skip the one just walked (by frame), group by app.
             let others = scene.filter { !($0.isFrontmostApp && abs($0.frame.minX - focusedFrame.minX) < 3 && abs($0.frame.minY - focusedFrame.minY) < 3) }
+            let focusedScene = scene.first { $0.isFrontmostApp && $0.frame.intersection(focusedFrame).width > focusedFrame.width * 0.8 }
+            DispatchQueue.main.async { batch(Batch(window: focusedScene, targets: targets, elapsed: Date().timeIntervalSince(start), windowsPending: others.count)) }
+            Self.refreshStatusItemsIfStale()
+
             let byPid = Dictionary(grouping: others, by: \.pid)
             let group = DispatchGroup()
             let screenBounds = NSScreen.screens.reduce(CGRect.null) { $0.union(Self.axRect(for: $1)) }
