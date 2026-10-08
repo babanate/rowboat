@@ -1,32 +1,48 @@
 import Foundation
 
-/// Hands out prefix-free labels in batches. Labels already handed out never
-/// change; when the pool runs dry the allocator expands a reserved seed
-/// label into its children, so later batches (other windows, screen text
-/// arriving after the first paint) get longer labels instead of relabelling
-/// what the user may already be typing.
+/// Hands out fixed-length labels in batches, Homerow-style.
+///
+/// Every label has two letters, so no label is a prefix of another and the
+/// first keystroke never fires a click. The first letter varies fastest
+/// (aa, sa, da, ...), so neighbouring targets differ on the first key.
+/// The last letter of the alphabet is reserved as a three-letter prefix for
+/// overflow (screens with more than (n-1)*n targets). Labels already handed
+/// out never change, whatever arrives later.
 public struct LabelAllocator {
     public let alphabet: [Character]
-    private var pool: [String]          // unassigned, sorted shortest first; last one is the seed
     public private(set) var assigned: [String] = []
+    private var index = 0
 
-    /// `expected` sizes the initial pool so the first batch gets the shortest labels.
-    public init(alphabet: String, expected: Int) {
-        let generator = LabelGenerator(alphabet: alphabet)
-        self.alphabet = generator.alphabet
-        pool = generator.labels(count: max(2, expected + 1))
+    public init(alphabet: String) {
+        alphabet_ = LabelGenerator(alphabet: alphabet).alphabet
+        self.alphabet = alphabet_
+    }
+    private let alphabet_: [Character]
+
+    /// Number of labels available before running out.
+    public var capacity: Int {
+        let n = alphabet.count
+        guard n >= 2 else { return 0 }
+        return (n - 1) * n + n * n
+    }
+
+    public static func label(at i: Int, alphabet: [Character]) -> String? {
+        let n = alphabet.count
+        guard n >= 2, i >= 0 else { return nil }
+        let twoLetter = (n - 1) * n
+        if i < twoLetter {
+            return String([alphabet[i % (n - 1)], alphabet[i / (n - 1)]])
+        }
+        let j = i - twoLetter
+        guard j < n * n else { return nil }
+        return String([alphabet[n - 1], alphabet[j % n], alphabet[j / n]])
     }
 
     public mutating func next(_ count: Int) -> [String] {
-        guard count > 0, !alphabet.isEmpty else { return [] }
         var out: [String] = []
-        while out.count < count {
-            if pool.count <= 1 {
-                guard let seed = pool.last else { break }
-                pool.removeLast()
-                pool.append(contentsOf: alphabet.map { seed + String($0) })
-            }
-            out.append(pool.removeFirst())
+        while out.count < count, let label = Self.label(at: index, alphabet: alphabet) {
+            out.append(label)
+            index += 1
         }
         assigned.append(contentsOf: out)
         return out

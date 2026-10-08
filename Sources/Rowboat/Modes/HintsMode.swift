@@ -69,11 +69,8 @@ final class HintsMode: Mode {
         let screen = NSScreen.screens.reduce(CGRect.null) { $0.union(ElementCollector.axRect(for: $1)) }
         let region = visible ?? screen
         if allocator == nil {
-            // Reserve room only for windows that are actually coming, so a lone
-            // window keeps one-letter labels.
-            let expected = batch.count + windowsPending * 40
-            allocator = LabelAllocator(alphabet: host.settings.labelCharacters, expected: expected)
-            labelSize = OverlayTheme.labelSize(for: String(repeating: "W", count: expected > 26 ? 2 : 1))
+            allocator = LabelAllocator(alphabet: host.settings.labelCharacters)
+            labelSize = OverlayTheme.labelSize(for: "WW")
         }
         let first = targets.isEmpty
         targets.append(contentsOf: batch)
