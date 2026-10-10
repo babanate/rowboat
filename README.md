@@ -1,5 +1,7 @@
 # Rowboat
 
+<img src="scripts/AppIcon.png" width="128" alt="Rowboat icon">
+
 Keyboard labels for every clickable thing on your Mac. Press a shortcut, type
 the label, done. Scroll any pane from the keyboard. Find elements by typing
 their text. An open-source, MIT-licensed take on the idea behind
@@ -146,6 +148,13 @@ permission, which Rowboat asks for the first time it is needed.
 
 Hyper key (Caps Lock remap), input-source switching, menu bar extras, update
 checks. No analytics, ever.
+
+## Icon
+
+Generated with Midjourney from a Liquid Glass prompt, then cropped and
+masked to the macOS icon shape by `design/make-icon.swift`:
+
+    swift design/make-icon.swift design/icon-source.png 176 176 672 scripts/AppIcon.icns
 
 ## License
 
