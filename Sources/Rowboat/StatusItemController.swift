@@ -38,6 +38,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(modeItem("Click labels", s.hintsShortcut, #selector(hints)))
         menu.addItem(modeItem("Scroll", s.scrollShortcut, #selector(scroll)))
         menu.addItem(modeItem("Search", s.searchShortcut, #selector(search)))
+        menu.addItem(modeItem("Grid", s.gridShortcut, #selector(grid)))
         menu.addItem(.separator())
         let settings = NSMenuItem(title: "Settings…", action: #selector(settingsAction), keyEquivalent: ",")
         settings.target = self
@@ -66,6 +67,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     @objc private func hints() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { self.modes.activate(.hints) } }
     @objc private func scroll() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { self.modes.activate(.scroll) } }
     @objc private func search() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { self.modes.activate(.search) } }
+    @objc private func grid() { DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { self.modes.activate(.grid) } }
     @objc private func settingsAction() { openSettings() }
     @objc private func toggleLogin() { Settings.shared.launchAtLogin.toggle() }
     @objc private func grant() {

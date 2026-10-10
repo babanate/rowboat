@@ -59,7 +59,7 @@ enum CLI {
             return 0
         case "--activate":
             guard let mode = args.dropFirst().first, ModeKind(rawValue: mode) != nil else {
-                print("usage: --activate hints|scroll|search"); return 2
+                print("usage: --activate hints|scroll|search|grid"); return 2
             }
             DistributedNotificationCenter.default().postNotificationName(activateNotification, object: nil, userInfo: ["mode": mode], deliverImmediately: true)
             return 0

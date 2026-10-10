@@ -16,6 +16,8 @@ Chrome, Safari, Notes and System Settings (see "Verified").
 | Scroll | ⇧⌘J | Outlines each scroll area with a number. `h j k l` or the arrow keys scroll the selected one, Shift dashes, `d`/`u` half-page, `g g`/`G` top and bottom, Space/⇧Space page, a digit or Tab switches areas. |
 | Search | none by default | Type part of an element's title, description or value. The best nine matches get labels 1 to 9; Return clicks the best one. Give it a shortcut in Settings if you want it. |
 
+| Grid | none by default | Click anywhere, even where nothing can be labelled (images, maps, timelines, games, remote desktops). Each letter zooms into a cell; Return or Space clicks the centre (⇧ right, ⌘ command, ⌥ double); arrows nudge, ⇧ arrows nudge further; Delete zooms back out. |
+
 Pressing a mode's shortcut again, or switching apps, leaves the mode. The
 keyboard is never left captured: if macOS disables the event tap, Rowboat
 re-enables it once and otherwise ends the mode.
@@ -123,8 +125,9 @@ the window off the screen: a 13 ms capture, then Vision's fast OCR at half
 resolution, grouped into phrases, with URLs and paths getting labels of their
 own. It runs when an app yields fewer than six targets inside its window or
 when the app is listed under Screen text in Settings (Warp is listed by
-default). First press in such an app: about a quarter second; later presses
-reuse the result until the screen changes. It needs the Screen Recording
+default). Rowboat pre-reads such an app's window in the background when you switch
+to it and shortly after each click in it, so a press usually finds the text
+already read (about 30 ms). There is no polling while idle. It needs the Screen Recording
 permission, which Rowboat asks for the first time it is needed.
 
 ## Side effects worth knowing

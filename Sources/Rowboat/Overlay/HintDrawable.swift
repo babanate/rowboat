@@ -21,6 +21,7 @@ struct OverlayScene {
     var hints: [HintDrawable] = []
     var outlines: [OutlineDrawable] = []
     var message: String? = nil        // centred badge ("No targets", search query)
+    var crosshair: CGPoint? = nil     // grid mode click point
     var messageIsQuery = false
 }
 

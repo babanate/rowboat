@@ -1,7 +1,7 @@
 import AppKit
 
 enum ModeKind: String, CaseIterable {
-    case hints, scroll, search
+    case hints, scroll, search, grid
 }
 
 /// Services a mode needs from its controller.

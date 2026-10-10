@@ -41,6 +41,7 @@ final class SettingsWindowController: NSObject, NSTextViewDelegate, NSTextFieldD
         stack.addArrangedSubview(shortcutRow("Click labels", get: { self.settings.hintsShortcut }, set: { self.settings.hintsShortcut = $0 }))
         stack.addArrangedSubview(shortcutRow("Scroll", get: { self.settings.scrollShortcut }, set: { self.settings.scrollShortcut = $0 }))
         stack.addArrangedSubview(shortcutRow("Search", get: { self.settings.searchShortcut }, set: { self.settings.searchShortcut = $0 }))
+        stack.addArrangedSubview(shortcutRow("Grid", get: { self.settings.gridShortcut }, set: { self.settings.gridShortcut = $0 }))
         stack.addArrangedSubview(caption("Click a box, then press the keys; press Delete instead to leave a mode without a shortcut (it stays in the menu bar menu). A hyper key from Raycast or Karabiner records as ⌃⌥⇧⌘ plus the key. Press a shortcut again to leave a mode; Escape always leaves."))
 
         stack.addArrangedSubview(header("Labels"))

@@ -50,6 +50,9 @@ final class OverlayWindow: NSPanel {
             c.targetFrame = localRect(h.targetFrame)
             return c
         }
+        if let c = scene.crosshair {
+            local.crosshair = screenAXFrame.contains(c) ? localRect(CGRect(origin: c, size: .zero)).origin : nil
+        }
         local.outlines = scene.outlines.compactMap { o in
             guard o.frame.intersects(screenAXFrame) else { return nil }
             var c = o
@@ -83,8 +86,10 @@ final class OverlayView: NSView {
                 OverlayTheme.outline.withAlphaComponent(0.06).setFill()
                 path.fill()
             }
-            drawLabel(o.label, typedCount: 0, at: CGPoint(x: o.frame.minX + 6, y: o.frame.maxY - OverlayTheme.labelSize(for: o.label).height - 6),
-                      style: o.selected ? .selected : .normal, ctx: ctx)
+            if !o.label.isEmpty {
+                drawLabel(o.label, typedCount: 0, at: CGPoint(x: o.frame.minX + 6, y: o.frame.maxY - OverlayTheme.labelSize(for: o.label).height - 6),
+                          style: o.selected ? .selected : .normal, ctx: ctx)
+            }
         }
 
         for h in scene.hints where h.style == .selected {
@@ -99,6 +104,16 @@ final class OverlayView: NSView {
 
         if let message = scene.message {
             drawBadge(message, isQuery: scene.messageIsQuery)
+        }
+        if let c = scene.crosshair {
+            let r: CGFloat = 9
+            let ring = NSBezierPath(ovalIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2))
+            ring.lineWidth = 2
+            NSColor.systemRed.setStroke(); ring.stroke()
+            let cross = NSBezierPath()
+            cross.move(to: CGPoint(x: c.x - r - 5, y: c.y)); cross.line(to: CGPoint(x: c.x + r + 5, y: c.y))
+            cross.move(to: CGPoint(x: c.x, y: c.y - r - 5)); cross.line(to: CGPoint(x: c.x, y: c.y + r + 5))
+            cross.lineWidth = 1.5; cross.stroke()
         }
     }
 

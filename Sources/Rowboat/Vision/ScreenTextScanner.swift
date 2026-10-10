@@ -16,12 +16,20 @@ final class ScreenTextScanner {
         var error: String?
     }
 
+    private let lock = NSLock()
+    /// Apps where a press needed screen text this session; pre-warmed on activation.
+    private(set) var appsNeedingText: Set<String> = []
+    func noteNeedsText(_ bundleID: String?) {
+        guard let id = bundleID else { return }
+        lock.lock(); appsNeedingText.insert(id); lock.unlock()
+    }
     private var lastFingerprint: [UInt8] = []
     private var lastRect = CGRect.zero
     private var lastTargets: [HintTarget] = []
     private let scale: CGFloat = 0.5
 
     func scan(_ rect: CGRect) -> Result {
+        lock.lock(); defer { lock.unlock() }
         let start = Date()
         guard ScreenCapture.isAvailable else { return Result(targets: [], elapsed: 0, fromCache: false, error: "capture unavailable") }
         guard ScreenCapture.hasPermission(prompt: false) else { return Result(targets: [], elapsed: 0, fromCache: false, error: "no screen recording permission") }

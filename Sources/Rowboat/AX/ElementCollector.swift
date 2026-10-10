@@ -339,6 +339,7 @@ final class ElementCollector {
             let focusedFrame = report.visibleFrame
             // Screen text runs beside the other windows, never ahead of the first paint.
             if report.wantsScreenText {
+                ScreenTextScanner.shared.noteNeedsText(app.bundleIdentifier)
                 let axTargets = targets
                 Self.ocrQueue.async {
                     var result = Self.screenText(in: focusedFrame, avoiding: axTargets)

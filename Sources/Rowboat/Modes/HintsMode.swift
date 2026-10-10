@@ -170,6 +170,8 @@ final class HintsMode: Mode {
         // Let the event tap release before the click lands.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) {
             Clicker.click(target, kind: kind, raise: raise)
+            // The click usually changes the screen; re-read it once it settles.
+            if let app = NSWorkspace.shared.frontmostApplication { ScreenTextPrewarmer.shared.schedule(app, after: 0.8) }
         }
     }
 

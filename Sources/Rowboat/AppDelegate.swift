@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if Permissions.accessibilityTrusted(prompt: false) {
             enabler = AccessibilityEnabler()
             ElementCollector.refreshStatusItemsIfStale()
+            ScreenTextPrewarmer.shared.start()
         }
 
         settingsObserver = Settings.shared.objectWillChange
@@ -40,6 +41,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     self?.registerHotKeys()
                     self?.enabler = AccessibilityEnabler()
                     ElementCollector.refreshStatusItemsIfStale()
+                    ScreenTextPrewarmer.shared.start()
                 }
             }
         }
@@ -63,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let k = s.hintsShortcut { hotKeys.register(k) { [weak self] in self?.modes.activate(.hints) } }
         if let k = s.scrollShortcut { hotKeys.register(k) { [weak self] in self?.modes.activate(.scroll) } }
         if let k = s.searchShortcut { hotKeys.register(k) { [weak self] in self?.modes.activate(.search) } }
+        if let k = s.gridShortcut { hotKeys.register(k) { [weak self] in self?.modes.activate(.grid) } }
     }
 
     @objc private func activateFromNotification(_ note: Notification) {

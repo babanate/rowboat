@@ -27,7 +27,7 @@ final class ModeController: ModeHost {
 
     /// The mode a key event would trigger, if it matches a configured shortcut.
     private func shortcutKind(for event: KeyEvent) -> ModeKind? {
-        let pairs: [(KeyShortcut?, ModeKind)] = [(settings.hintsShortcut, .hints), (settings.scrollShortcut, .scroll), (settings.searchShortcut, .search)]
+        let pairs: [(KeyShortcut?, ModeKind)] = [(settings.hintsShortcut, .hints), (settings.scrollShortcut, .scroll), (settings.searchShortcut, .search), (settings.gridShortcut, .grid)]
         for (shortcut, kind) in pairs {
             if let s = shortcut, s.keyCode == event.keyCode, event.modifiers == s.flags { return kind }
         }
@@ -74,6 +74,7 @@ final class ModeController: ModeHost {
         case .hints: mode = HintsMode(host: self, searchable: false)
         case .search: mode = HintsMode(host: self, searchable: true)
         case .scroll: mode = ScrollMode(host: self)
+        case .grid: mode = GridMode(host: self)
         }
         current = mode
         Log.mode.info("begin \(kind.rawValue) in \(front.bundleIdentifier ?? "?")")

@@ -10,7 +10,7 @@ final class Settings: ObservableObject {
     private init(defaults: UserDefaults = .standard) { self.defaults = defaults }
 
     enum Key: String, CaseIterable {
-        case hintsShortcut, scrollShortcut, searchShortcut
+        case hintsShortcut, scrollShortcut, searchShortcut, gridShortcut
         case labelCharacters
         case excludedBundleIdentifiers
         case enableChromiumAccessibility
@@ -52,6 +52,10 @@ final class Settings: ObservableObject {
     var searchShortcut: KeyShortcut? {
         get { shortcut(.searchShortcut, default: Self.defaultSearchShortcut) }
         set { setShortcut(newValue, .searchShortcut) }
+    }
+    var gridShortcut: KeyShortcut? {
+        get { shortcut(.gridShortcut, default: nil) }
+        set { setShortcut(newValue, .gridShortcut) }
     }
     var labelCharacters: String {
         get { defaults.string(forKey: Key.labelCharacters.rawValue).flatMap { $0.count >= 2 ? $0 : nil } ?? Self.defaultLabelCharacters }
